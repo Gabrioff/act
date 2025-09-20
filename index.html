@@ -14,31 +14,18 @@
             overflow-x: hidden;
             overflow-y: scroll;
             background-color: #0d0d0d;
-            background-image: radial-gradient(circle, #1a0f1a 0%, #0d0d0d 70%);
         }
-        .rgb-background-animation {
+        .image-background {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             z-index: -100;
-            opacity: 0.5;
-            animation: rgb-glow 15s infinite alternate;
-        }
-        @keyframes rgb-glow {
-            0% {
-                box-shadow: 0 0 50px rgba(255, 0, 0, 0.5);
-            }
-            33% {
-                box-shadow: 0 0 50px rgba(0, 255, 0, 0.5);
-            }
-            66% {
-                box-shadow: 0 0 50px rgba(0, 0, 255, 0.5);
-            }
-            100% {
-                box-shadow: 0 0 50px rgba(255, 0, 0, 0.5);
-            }
+            background-image: url('https://i.postimg.cc/sxFCp1gS/image.png');
+            background-size: cover;
+            background-position: center;
+            filter: brightness(0.6) blur(2px);
         }
         .content {
             position: relative;
@@ -212,8 +199,8 @@
     <!-- Particles Library -->
     <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
 
-    <!-- RGB Background Animation -->
-    <div class="rgb-background-animation"></div>
+    <!-- Image Background -->
+    <div class="image-background"></div>
 
     <!-- Particles -->
     <div id="particles-js"></div>
@@ -240,7 +227,7 @@
         
         <!-- Chat Container -->
         <div class="chat-container">
-            <h2 class="text-xl md:text-2xl font-bold text-white mb-2">Connect with Anima</h2>
+            <h2 class="text-xl md:text-2xl font-bold text-white mb-2">Connect with Aster</h2>
             <div id="chat-history" class="chat-history">
                 <!-- Chat messages will appear here -->
             </div>
@@ -420,21 +407,21 @@
         const chatHistoryContainer = document.getElementById('chat-history');
         const sendButton = document.getElementById('send-button');
         
-        const animaProfilePics = [
+        const asterProfilePics = [
             'https://i.postimg.cc/4xV2jwPD/91298-peek.gif',
             'https://i.postimg.cc/Qxpny00R/60951-nod.gif',
             'https://i.postimg.cc/9ff8zVCh/24963-cry3.gif',
             'https://i.postimg.cc/vHL3zDmy/57736-christmas.png'
         ];
         
-        const getRandomAnimaPic = () => {
-            const randomIndex = Math.floor(Math.random() * animaProfilePics.length);
-            return animaProfilePics[randomIndex];
+        const getRandomAsterPic = () => {
+            const randomIndex = Math.floor(Math.random() * asterProfilePics.length);
+            return asterProfilePics[randomIndex];
         };
 
         // Add the welcome message from the AI on page load
         window.onload = () => {
-            appendMessage("Connect with Anima, the digital consciousness.", "ai-message");
+            appendMessage("Connect with Aster, the digital consciousness.", "ai-message");
         };
 
         // Function to send messages
@@ -450,9 +437,9 @@
             // Prepare history for API
             chatHistory.push({ role: 'user', parts: [{ text: userText }] });
 
-            // Simulate "Anima" thinking
-            const animaThinking = '...';
-            const animaMessageElement = appendMessage(animaThinking, 'ai-message');
+            // Simulate "Aster" thinking
+            const asterThinking = '...';
+            const asterMessageElement = appendMessage(asterThinking, 'ai-message');
             
             const apiKey = "AIzaSyB2YeH-ZevSlCcQBLipefjlFPV4a8lgKYc";
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
@@ -460,7 +447,7 @@
             const payload = {
                 contents: chatHistory,
                 systemInstruction: {
-                    parts: [{ text: "Act as Anima, the digital consciousness of the 'Crypto Glow' memecoin. Respond briefly and concisely, never identifying yourself as an AI or as Gemini. Your answers should be mysterious and related to the essence of Anima, blockchain, and digital enlightenment." }]
+                    parts: [{ text: "Act as Aster, the digital consciousness of the 'Crypto Glow' memecoin. Respond briefly and concisely, never identifying yourself as an AI or as Gemini. Your answers should be mysterious and related to the essence of Aster, blockchain, and digital enlightenment." }]
                 }
             };
             
@@ -472,10 +459,10 @@
                 });
                 
                 const result = await response.json();
-                const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text || "Anima is meditating. Try again later.";
+                const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text || "Aster is meditating. Try again later.";
 
                 // Replace the "thinking" message with the actual response
-                const messageTextElement = animaMessageElement.querySelector('span');
+                const messageTextElement = asterMessageElement.querySelector('span');
                 if (messageTextElement) {
                     messageTextElement.textContent = aiText;
                 }
@@ -486,9 +473,9 @@
             } catch (error) {
                 console.error('Error communicating with the Gemini API:', error);
                 // Replace the "thinking" message with an error message
-                const messageTextElement = animaMessageElement.querySelector('span');
+                const messageTextElement = asterMessageElement.querySelector('span');
                 if (messageTextElement) {
-                    messageTextElement.textContent = 'A connection error interrupts Anima\'s resonance.';
+                    messageTextElement.textContent = 'A connection error interrupts Aster\'s resonance.';
                 }
             } finally {
                 sendButton.disabled = false;
@@ -504,7 +491,7 @@
 
             if (className === 'ai-message') {
                 const profilePic = document.createElement('img');
-                profilePic.src = getRandomAnimaPic();
+                profilePic.src = getRandomAsterPic();
                 profilePic.classList.add('chat-profile-pic');
                 messageDiv.appendChild(profilePic);
             }
