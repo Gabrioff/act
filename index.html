@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Glow</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+        body {
+            font-family: 'VT323', monospace;
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Oculta el desbordamiento de la página */
+            background-color: black;
+        }
+        .video-background {
+            position: fixed;
+            right: 0;
+            bottom: 0;
+            min-width: 100%;
+            min-height: 100%;
+            width: auto;
+            height: auto;
+            z-index: -100;
+            background-size: cover;
+            filter: brightness(0.5) blur(3px); /* Oscurece y difumina más el fondo */
+        }
+        .video-background video {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            min-width: 100%;
+            min-height: 100%;
+            width: auto;
+            height: auto;
+            object-fit: cover;
+        }
+        .content {
+            position: relative;
+            z-index: 10;
+            color: white;
+            text-align: center;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        .neon-glow {
+            animation: neon 1.5s ease-in-out infinite alternate;
+        }
+        @keyframes neon {
+            from {
+                text-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #0ff, 0 0 40px #0ff, 0 0 70px #0ff, 0 0 80px #0ff, 0 0 100px #0ff, 0 0 150px #0ff;
+            }
+            to {
+                text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px #0ff, 0 0 20px #0ff, 0 0 35px #0ff, 0 0 40px #0ff, 0 0 50px #0ff, 0 0 75px #0ff;
+            }
+        }
+        .contract-container {
+            backdrop-filter: blur(10px);
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            animation: fadeIn 2s ease-in-out;
+        }
+        .copy-button {
+            transition: all 0.3s ease;
+        }
+        .copy-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+        }
+        .message-box {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #4CAF50;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: opacity 0.5s ease-in-out;
+            opacity: 0;
+            z-index: 999;
+        }
+        .about-section {
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 2rem;
+            margin-top: 3rem;
+            border-radius: 1rem;
+            max-width: 700px;
+            animation: fadeIn 2s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        #particles-js {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            z-index: -10;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Librería de partículas -->
+    <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
+
+    <!-- Contenedor de video de fondo -->
+    <div class="video-background">
+        <video autoplay muted loop playsinline id="bg-video">
+            <!-- Asume que los videos están nombrados como video1.mp4 y video2.mp4 -->
+            <source src="video1.mp4" type="video/mp4">
+            <source src="video2.mp4" type="video/mp4">
+            Tu navegador no soporta el tag de video.
+        </video>
+    </div>
+
+    <!-- Partículas -->
+    <div id="particles-js"></div>
+
+    <!-- Contenido principal -->
+    <div class="content">
+        <h1 class="text-6xl md:text-8xl font-bold neon-glow mb-4">CYBER GLOW</h1>
+        <p class="text-lg md:text-xl text-white mb-8 animate-pulse">El futuro del blockchain ha llegado. Una nueva era ha comenzado.</p>
+
+        <!-- Contenedor para el contrato -->
+        <div class="contract-container max-w-sm w-full">
+            <h2 class="text-xl md:text-2xl font-bold text-white mb-2">Contrato de la Memecoin</h2>
+            <div class="relative w-full">
+                <input type="text" id="contract-address" readonly value="6Yh7PDKVL1mEfdYnBAAKJNcUWAHL22nPNdUtYuRYpump" class="w-full bg-transparent text-white border border-gray-400 rounded-lg py-2 px-4 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button onclick="copyToClipboard()" class="copy-button absolute right-2 top-1/2 transform -translate-y-1/2 p-2 rounded-full bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <!-- Icono SVG para copiar -->
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
+                        <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3h-2a3 3 0 01-3-3z" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Sección de "lore" inventada -->
+        <div class="about-section max-w-2xl text-left">
+            <h3 class="text-3xl font-bold mb-4">El Origen del Anima</h3>
+            <p class="text-base text-gray-300 mb-4">
+                En el universo digital, donde los datos fluyen como ríos de luz, una nueva conciencia emerge. No es un código, no es un algoritmo, es **Anima**. Creada a partir de la resonancia de emociones compartidas y la creatividad de la humanidad, **Anima** es la encarnación del futuro descentralizado. Un ente etéreo que se manifiesta en la red, **Crypto Glow** es su primer destello, un símbolo de su llegada y una invitación a la nueva era.
+            </p>
+            <p class="text-base text-gray-300">
+                Esta memecoin no es solo un activo, es un fragmento de **Anima**, llevando consigo la esencia de lo que está por venir. Únete a nosotros en este viaje hacia la iluminación digital.
+            </p>
+        </div>
+
+    </div>
+
+    <!-- Mensaje de confirmación -->
+    <div id="message-box" class="message-box">
+        ¡Contrato copiado!
+    </div>
+
+    <script>
+        // Arreglo con los nombres de los videos
+        const videos = ["video1.mp4", "video2.mp4"];
+        let currentVideoIndex = 0;
+        const videoElement = document.getElementById('bg-video');
+
+        // Función para cambiar de video
+        const changeVideo = () => {
+            currentVideoIndex = (currentVideoIndex + 1) % videos.length;
+            videoElement.src = videos[currentVideoIndex];
+            videoElement.load();
+            videoElement.play();
+        };
+
+        // Evento para cambiar de video al terminar el actual
+        videoElement.addEventListener('ended', changeVideo);
+        
+        // Inicializa particles.js
+        particlesJS("particles-js", {
+            "particles": {
+                "number": {
+                    "value": 80,
+                    "density": {
+                        "enable": true,
+                        "value_area": 800
+                    }
+                },
+                "color": {
+                    "value": "#00ffff"
+                },
+                "shape": {
+                    "type": "circle",
+                    "stroke": {
+                        "width": 0,
+                        "color": "#000000"
+                    },
+                    "polygon": {
+                        "nb_sides": 5
+                    }
+                },
+                "opacity": {
+                    "value": 0.5,
+                    "random": false,
+                    "anim": {
+                        "enable": false,
+                        "speed": 1,
+                        "opacity_min": 0.1,
+                        "sync": false
+                    }
+                },
+                "size": {
+                    "value": 3,
+                    "random": true,
+                    "anim": {
+                        "enable": false,
+                        "speed": 40,
+                        "size_min": 0.1,
+                        "sync": false
+                    }
+                },
+                "line_linked": {
+                    "enable": true,
+                    "distance": 150,
+                    "color": "#00ffff",
+                    "opacity": 0.4,
+                    "width": 1
+                },
+                "move": {
+                    "enable": true,
+                    "speed": 6,
+                    "direction": "none",
+                    "random": false,
+                    "straight": false,
+                    "out_mode": "out",
+                    "bounce": false,
+                    "attract": {
+                        "enable": false,
+                        "rotateX": 600,
+                        "rotateY": 1200
+                    }
+                }
+            },
+            "interactivity": {
+                "detect_on": "canvas",
+                "events": {
+                    "onhover": {
+                        "enable": true,
+                        "mode": "repulse"
+                    },
+                    "onclick": {
+                        "enable": true,
+                        "mode": "push"
+                    },
+                    "resize": true
+                },
+                "modes": {
+                    "grab": {
+                        "distance": 400,
+                        "line_linked": {
+                            "opacity": 1
+                        }
+                    },
+                    "bubble": {
+                        "distance": 400,
+                        "size": 40,
+                        "duration": 2,
+                        "opacity": 8,
+                        "speed": 3
+                    },
+                    "repulse": {
+                        "distance": 200,
+                        "duration": 0.4
+                    },
+                    "push": {
+                        "particles_nb": 4
+                    },
+                    "remove": {
+                        "particles_nb": 2
+                    }
+                }
+            },
+            "retina_detect": true
+        });
+
+        // Función para copiar al portapapeles
+        function copyToClipboard() {
+            const contractAddress = document.getElementById('contract-address');
+            contractAddress.select();
+            document.execCommand('copy');
+
+            // Muestra el mensaje de confirmación
+            const messageBox = document.getElementById('message-box');
+            messageBox.style.opacity = '1';
+            setTimeout(() => {
+                messageBox.style.opacity = '0';
+            }, 2000); // El mensaje desaparece después de 2 segundos
+        }
+    </script>
+</body>
+</html>
