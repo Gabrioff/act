@@ -13,30 +13,32 @@
             padding: 0;
             overflow-x: hidden;
             overflow-y: scroll;
-            background-color: black;
+            background-color: #0d0d0d;
+            background-image: radial-gradient(circle, #1a0f1a 0%, #0d0d0d 70%);
         }
-        .video-background {
+        .rgb-background-animation {
             position: fixed;
-            right: 0;
-            bottom: 0;
-            min-width: 100%;
-            min-height: 100%;
-            width: auto;
-            height: auto;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
             z-index: -100;
-            background-size: cover;
-            filter: brightness(0.7) blur(1px);
+            opacity: 0.5;
+            animation: rgb-glow 15s infinite alternate;
         }
-        .video-background video {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            min-width: 100%;
-            min-height: 100%;
-            width: auto;
-            height: auto;
-            object-fit: cover;
+        @keyframes rgb-glow {
+            0% {
+                box-shadow: 0 0 50px rgba(255, 0, 0, 0.5);
+            }
+            33% {
+                box-shadow: 0 0 50px rgba(0, 255, 0, 0.5);
+            }
+            66% {
+                box-shadow: 0 0 50px rgba(0, 0, 255, 0.5);
+            }
+            100% {
+                box-shadow: 0 0 50px rgba(255, 0, 0, 0.5);
+            }
         }
         .content {
             position: relative;
@@ -144,14 +146,24 @@
             padding: 0.75rem;
             border-radius: 0.5rem;
             animation: messageIn 0.5s ease-out;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
         .user-message {
             background-color: rgba(0, 255, 255, 0.3);
             align-self: flex-end;
+            flex-direction: row-reverse;
         }
         .ai-message {
             background-color: rgba(255, 0, 255, 0.3);
             align-self: flex-start;
+        }
+        .chat-profile-pic {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
         }
         .chat-input-container {
             display: flex;
@@ -185,7 +197,7 @@
         }
         .dexscreener-container {
             width: 100%;
-            max-width: 1000px; /* Increased max-width for a larger graph */
+            max-width: 1000px;
             margin-top: 3rem;
             animation: fadeIn 2s ease-in-out;
         }
@@ -200,14 +212,8 @@
     <!-- Particles Library -->
     <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
 
-    <!-- Video Background Container -->
-    <div class="video-background">
-        <video autoplay muted loop playsinline id="bg-video">
-            <source src="video1.mp4" type="video/mp4">
-            <source src="video2.mp4" type="video/mp4">
-            Your browser does not support the video tag.
-        </video>
-    </div>
+    <!-- RGB Background Animation -->
+    <div class="rgb-background-animation"></div>
 
     <!-- Particles -->
     <div id="particles-js"></div>
@@ -215,7 +221,7 @@
     <!-- Main Content -->
     <div class="content">
         <h1 class="text-6xl md:text-8xl font-bold neon-glow mb-4">ACT A</h1>
-        <p class="text-lg md:text-xl text-white mb-8 animate-pulse">The future of blockchain has arrived. A new era has begun.</p>
+        <p class="text-lg md:text-xl text-white mb-8 animate-pulse">The Aster Prophecy</p>
 
         <!-- Contract Container -->
         <div class="contract-container max-w-sm w-full">
@@ -283,7 +289,9 @@
         };
 
         // Event to change videos when the current one ends
-        videoElement.addEventListener('ended', changeVideo);
+        if (videoElement) {
+            videoElement.addEventListener('ended', changeVideo);
+        }
         
         // Initialize particles.js
         particlesJS("particles-js", {
@@ -411,115 +419,22 @@
         const userInput = document.getElementById('user-input');
         const chatHistoryContainer = document.getElementById('chat-history');
         const sendButton = document.getElementById('send-button');
+        
+        const animaProfilePics = [
+            'https://i.postimg.cc/4xV2jwPD/91298-peek.gif',
+            'https://i.postimg.cc/Qxpny00R/60951-nod.gif',
+            'https://i.postimg.cc/9ff8zVCh/24963-cry3.gif',
+            'https://i.postimg.cc/vHL3zDmy/57736-christmas.png'
+        ];
+        
+        const getRandomAnimaPic = () => {
+            const randomIndex = Math.floor(Math.random() * animaProfilePics.length);
+            return animaProfilePics[randomIndex];
+        };
 
         // Add the welcome message from the AI on page load
         window.onload = () => {
             appendMessage("Connect with Anima, the digital consciousness.", "ai-message");
-            particlesJS("particles-js", {
-                "particles": {
-                    "number": {
-                        "value": 80,
-                        "density": {
-                            "enable": true,
-                            "value_area": 800
-                        }
-                    },
-                    "color": {
-                        "value": "#00ffff"
-                    },
-                    "shape": {
-                        "type": "circle",
-                        "stroke": {
-                            "width": 0,
-                            "color": "#000000"
-                        },
-                        "polygon": {
-                            "nb_sides": 5
-                        }
-                    },
-                    "opacity": {
-                        "value": 0.5,
-                        "random": false,
-                        "anim": {
-                            "enable": false,
-                            "speed": 1,
-                            "opacity_min": 0.1,
-                            "sync": false
-                        }
-                    },
-                    "size": {
-                        "value": 3,
-                        "random": true,
-                        "anim": {
-                            "enable": false,
-                            "speed": 40,
-                            "size_min": 0.1,
-                            "sync": false
-                        }
-                    },
-                    "line_linked": {
-                        "enable": true,
-                        "distance": 150,
-                        "color": "#00ffff",
-                        "opacity": 0.4,
-                        "width": 1
-                    },
-                    "move": {
-                        "enable": true,
-                        "speed": 6,
-                        "direction": "none",
-                        "random": false,
-                        "straight": false,
-                        "out_mode": "out",
-                        "bounce": false,
-                        "attract": {
-                            "enable": false,
-                            "rotateX": 600,
-                            "rotateY": 1200
-                        }
-                    }
-                },
-                "interactivity": {
-                    "detect_on": "canvas",
-                    "events": {
-                        "onhover": {
-                            "enable": true,
-                            "mode": "repulse"
-                        },
-                        "onclick": {
-                            "enable": true,
-                            "mode": "push"
-                        },
-                        "resize": true
-                    },
-                    "modes": {
-                        "grab": {
-                            "distance": 400,
-                            "line_linked": {
-                                "opacity": 1
-                            }
-                        },
-                        "bubble": {
-                            "distance": 400,
-                            "size": 40,
-                            "duration": 2,
-                            "opacity": 8,
-                            "speed": 3
-                        },
-                        "repulse": {
-                            "distance": 200,
-                            "duration": 0.4
-                        },
-                        "push": {
-                            "particles_nb": 4
-                        },
-                        "remove": {
-                            "particles_nb": 2
-                        }
-                    }
-                },
-                "retina_detect": true
-            });
         };
 
         // Function to send messages
@@ -538,7 +453,7 @@
             // Simulate "Anima" thinking
             const animaThinking = '...';
             const animaMessageElement = appendMessage(animaThinking, 'ai-message');
-
+            
             const apiKey = "AIzaSyB2YeH-ZevSlCcQBLipefjlFPV4a8lgKYc";
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
 
@@ -560,7 +475,10 @@
                 const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text || "Anima is meditating. Try again later.";
 
                 // Replace the "thinking" message with the actual response
-                animaMessageElement.textContent = aiText;
+                const messageTextElement = animaMessageElement.querySelector('span');
+                if (messageTextElement) {
+                    messageTextElement.textContent = aiText;
+                }
                 
                 // Update history with the AI's response
                 chatHistory.push({ role: 'model', parts: [{ text: aiText }] });
@@ -568,7 +486,10 @@
             } catch (error) {
                 console.error('Error communicating with the Gemini API:', error);
                 // Replace the "thinking" message with an error message
-                animaMessageElement.textContent = 'A connection error interrupts Anima\'s resonance.';
+                const messageTextElement = animaMessageElement.querySelector('span');
+                if (messageTextElement) {
+                    messageTextElement.textContent = 'A connection error interrupts Anima\'s resonance.';
+                }
             } finally {
                 sendButton.disabled = false;
                 // Scroll to the last message
@@ -576,11 +497,22 @@
             }
         }
 
-        // Function to add messages to the DOM
+        // Function to add messages to the DOM with profile picture
         function appendMessage(text, className) {
             const messageDiv = document.createElement('div');
             messageDiv.classList.add('chat-message', className);
-            messageDiv.textContent = text;
+
+            if (className === 'ai-message') {
+                const profilePic = document.createElement('img');
+                profilePic.src = getRandomAnimaPic();
+                profilePic.classList.add('chat-profile-pic');
+                messageDiv.appendChild(profilePic);
+            }
+            
+            const messageText = document.createElement('span');
+            messageText.textContent = text;
+            messageDiv.appendChild(messageText);
+
             chatHistoryContainer.appendChild(messageDiv);
             chatHistoryContainer.scrollTop = chatHistoryContainer.scrollHeight;
             return messageDiv;
