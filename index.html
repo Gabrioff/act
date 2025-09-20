@@ -212,7 +212,8 @@
         <!-- Contenedor del Contrato -->
         <div class="contract-container max-w-sm w-full container-glow">
             <h2 class="text-xl md:text-2xl font-bold text-white mb-2">Memecoin Contract</h2>
-            <p class="text-white text-lg mt-2">Contract address will be here after launch.</p>
+            <p id="contract-address" class="text-white text-sm break-all mb-4">B2sdJFApWZ5tYFt8hS5WbVMbkmjPkuPNXDdEcvcypump</p>
+            <button onclick="copyToClipboard()" class="copy-button bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-full">Copy Contract Address</button>
         </div>
         
         <!-- Contenedor del Chat -->
@@ -242,6 +243,22 @@
     </div>
 
     <script>
+        function copyToClipboard() {
+            const contractAddress = document.getElementById('contract-address').textContent;
+            const tempInput = document.createElement('input');
+            tempInput.value = contractAddress;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            
+            const messageBox = document.getElementById('message-box');
+            messageBox.style.opacity = '1';
+            setTimeout(() => {
+                messageBox.style.opacity = '0';
+            }, 3000);
+        }
+
         const chatHistory = [];
         const userInput = document.getElementById('user-input');
         const chatHistoryContainer = document.getElementById('chat-history');
