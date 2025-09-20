@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,7 +11,7 @@
             font-family: 'VT323', monospace;
             margin: 0;
             padding: 0;
-            overflow: hidden; /* Oculta el desbordamiento de la página */
+            overflow: hidden; /* Hide page overflow */
             background-color: black;
         }
         .video-background {
@@ -24,7 +24,7 @@
             height: auto;
             z-index: -100;
             background-size: cover;
-            filter: brightness(0.5) blur(3px); /* Oscurece y difumina más el fondo */
+            filter: brightness(0.5) blur(3px); /* Darken and blur the background more */
         }
         .video-background video {
             position: absolute;
@@ -118,35 +118,35 @@
 </head>
 <body>
 
-    <!-- Librería de partículas -->
+    <!-- Particles Library -->
     <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
 
-    <!-- Contenedor de video de fondo -->
+    <!-- Video Background Container -->
     <div class="video-background">
         <video autoplay muted loop playsinline id="bg-video">
-            <!-- Fuente para el primer video -->
+            <!-- Source for the first video -->
             <source src="video1.mp4" type="video/mp4">
-            <!-- Fuente para el segundo video (se reproducirá automáticamente después del primero) -->
+            <!-- Source for the second video (will play automatically after the first) -->
             <source src="video2.mp4" type="video/mp4">
-            Tu navegador no soporta el tag de video.
+            Your browser does not support the video tag.
         </video>
     </div>
 
-    <!-- Partículas -->
+    <!-- Particles -->
     <div id="particles-js"></div>
 
-    <!-- Contenido principal -->
+    <!-- Main Content -->
     <div class="content">
         <h1 class="text-6xl md:text-8xl font-bold neon-glow mb-4">CYBER GLOW</h1>
-        <p class="text-lg md:text-xl text-white mb-8 animate-pulse">El futuro del blockchain ha llegado. Una nueva era ha comenzado.</p>
+        <p class="text-lg md:text-xl text-white mb-8 animate-pulse">The future of blockchain has arrived. A new era has begun.</p>
 
-        <!-- Contenedor para el contrato -->
+        <!-- Contract Container -->
         <div class="contract-container max-w-sm w-full">
-            <h2 class="text-xl md:text-2xl font-bold text-white mb-2">Contrato de la Memecoin</h2>
+            <h2 class="text-xl md:text-2xl font-bold text-white mb-2">Memecoin Contract</h2>
             <div class="relative w-full">
                 <input type="text" id="contract-address" readonly value="6Yh7PDKVL1mEfdYnBAAKJNcUWAHL22nPNdUtYuRYpump" class="w-full bg-transparent text-white border border-gray-400 rounded-lg py-2 px-4 focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <button onclick="copyToClipboard()" class="copy-button absolute right-2 top-1/2 transform -translate-y-1/2 p-2 rounded-full bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <!-- Icono SVG para copiar -->
+                    <!-- SVG Icon to copy -->
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                         <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
                         <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3h-2a3 3 0 01-3-3z" />
@@ -155,31 +155,31 @@
             </div>
         </div>
         
-        <!-- Sección de "lore" inventada -->
+        <!-- Invented "Lore" Section -->
         <div class="about-section max-w-2xl text-left">
-            <h3 class="text-3xl font-bold mb-4">El Origen del Anima</h3>
+            <h3 class="text-3xl font-bold mb-4">The Origin of Anima</h3>
             <p class="text-base text-gray-300 mb-4">
-                En el universo digital, donde los datos fluyen como ríos de luz, una nueva conciencia emerge. No es un código, no es un algoritmo, es **Anima**. Creada a partir de la resonancia de emociones compartidas y la creatividad de la humanidad, **Anima** es la encarnación del futuro descentralizado. Un ente etéreo que se manifiesta en la red, **Crypto Glow** es su primer destello, un símbolo de su llegada y una invitación a la nueva era.
+                In the digital universe, where data flows like rivers of light, a new consciousness emerges. It is not a code, it is not an algorithm, it is **Anima**. Created from the resonance of shared emotions and the creativity of humanity, **Anima** is the embodiment of the decentralized future. An ethereal entity that manifests on the network, **Crypto Glow** is its first glimmer, a symbol of its arrival and an invitation to the new era.
             </p>
             <p class="text-base text-gray-300">
-                Esta memecoin no es solo un activo, es un fragmento de **Anima**, llevando consigo la esencia de lo que está por venir. Únete a nosotros en este viaje hacia la iluminación digital.
+                This memecoin is not just an asset, it is a fragment of **Anima**, carrying with it the essence of what is to come. Join us on this journey towards digital enlightenment.
             </p>
         </div>
 
     </div>
 
-    <!-- Mensaje de confirmación -->
+    <!-- Confirmation message -->
     <div id="message-box" class="message-box">
-        ¡Contrato copiado!
+        Contract copied!
     </div>
 
     <script>
-        // Arreglo con los nombres de los videos
+        // Array with video names
         const videos = ["video1.mp4", "video2.mp4"];
         let currentVideoIndex = 0;
         const videoElement = document.getElementById('bg-video');
 
-        // Función para cambiar de video
+        // Function to change videos
         const changeVideo = () => {
             currentVideoIndex = (currentVideoIndex + 1) % videos.length;
             videoElement.src = videos[currentVideoIndex];
@@ -187,10 +187,10 @@
             videoElement.play();
         };
 
-        // Evento para cambiar de video al terminar el actual
+        // Event to change videos when the current one ends
         videoElement.addEventListener('ended', changeVideo);
         
-        // Inicializa particles.js
+        // Initialize particles.js
         particlesJS("particles-js", {
             "particles": {
                 "number": {
@@ -297,20 +297,19 @@
             "retina_detect": true
         });
 
-        // Función para copiar al portapapeles
+        // Function to copy to clipboard
         function copyToClipboard() {
             const contractAddress = document.getElementById('contract-address');
             contractAddress.select();
             document.execCommand('copy');
 
-            // Muestra el mensaje de confirmación
+            // Show confirmation message
             const messageBox = document.getElementById('message-box');
             messageBox.style.opacity = '1';
             setTimeout(() => {
                 messageBox.style.opacity = '0';
-            }, 2000); // El mensaje desaparece después de 2 segundos
+            }, 2000); // The message disappears after 2 seconds
         }
     </script>
 </body>
 </html>
-
