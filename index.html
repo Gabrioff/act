@@ -187,49 +187,48 @@
             max-width: 1000px;
             margin-top: 3rem;
             animation: fadeIn 2s ease-in-out;
-        }
-        .dexscreener-container iframe {
+            text-align: center;
+            padding: 2rem;
+            background-color: rgba(255, 255, 255, 0.1);
             border-radius: 1rem;
             box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+        .dexscreener-container h2 {
+            margin-bottom: 1rem;
+        }
+        .dexscreener-container p {
+            font-size: 1.25rem;
+            color: #ccc;
         }
     </style>
 </head>
 <body>
 
-    <!-- Particles Library -->
+    <!-- Biblioteca de Partículas -->
     <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
 
-    <!-- Image Background -->
+    <!-- Fondo de Imagen -->
     <div class="image-background"></div>
 
-    <!-- Particles -->
+    <!-- Partículas -->
     <div id="particles-js"></div>
 
-    <!-- Main Content -->
+    <!-- Contenido Principal -->
     <div class="content">
         <h1 class="text-6xl md:text-8xl font-bold neon-glow mb-4">ACT A</h1>
         <p class="text-lg md:text-xl text-white mb-8 animate-pulse">The Aster Prophecy</p>
 
-        <!-- Contract Container -->
+        <!-- Contenedor del Contrato -->
         <div class="contract-container max-w-sm w-full">
             <h2 class="text-xl md:text-2xl font-bold text-white mb-2">Memecoin Contract</h2>
-            <div class="relative w-full">
-                <input type="text" id="contract-address" readonly value="6Yh7PDKVL1mEfdYnBAAKJNcUWAHL22nPNdUtYuRYpump" class="w-full bg-transparent text-white border border-gray-400 rounded-lg py-2 px-4 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <button onclick="copyToClipboard()" class="copy-button absolute right-2 top-1/2 transform -translate-y-1/2 p-2 rounded-full bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <!-- SVG Icon for copy -->
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
-                        <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3h-2a3 3 0 01-3-3z" />
-                    </svg>
-                </button>
-            </div>
+            <p class="text-white text-lg mt-2">Contract address will be here after launch.</p>
         </div>
         
-        <!-- Chat Container -->
+        <!-- Contenedor del Chat -->
         <div class="chat-container">
             <h2 class="text-xl md:text-2xl font-bold text-white mb-2">Connect with Aster</h2>
             <div id="chat-history" class="chat-history">
-                <!-- Chat messages will appear here -->
+                <!-- Los mensajes del chat aparecerán aquí -->
             </div>
             <div class="chat-input-container">
                 <input type="text" id="user-input" class="chat-input" placeholder="Enter your message..." onkeypress="handleKeyPress(event)">
@@ -237,13 +236,13 @@
             </div>
         </div>
 
-        <!-- Dexscreener Graph -->
+        <!-- Gráfica de Dexscreener -->
         <div class="dexscreener-container">
             <h2 class="text-xl md:text-2xl font-bold text-white mb-4">Token Chart</h2>
-            <iframe src="https://dexscreener.com/solana/6Yh7PDKVL1mEfdYnBAAKJNcUWAHL22nPNdUtYuRYpump?embed=1" width="100%" height="600" style="border:0; border-radius: 10px; box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);"></iframe>
+            <p>Token chart will be available after launch.</p>
         </div>
         
-        <!-- Invented "Lore" Section -->
+        <!-- Sección de "Lore" Inventado -->
         <div class="about-section max-w-2xl text-left">
             <h3 class="text-3xl font-bold mb-4">The Origin of Anima</h3>
             <p class="text-base text-gray-300 mb-4">
@@ -256,31 +255,13 @@
 
     </div>
 
-    <!-- Confirmation message -->
+    <!-- Mensaje de confirmación -->
     <div id="message-box" class="message-box">
         Contract copied!
     </div>
 
     <script>
-        // Array with video names
-        const videos = ["video1.mp4", "video2.mp4"];
-        let currentVideoIndex = 0;
-        const videoElement = document.getElementById('bg-video');
-
-        // Function to change videos
-        const changeVideo = () => {
-            currentVideoIndex = (currentVideoIndex + 1) % videos.length;
-            videoElement.src = videos[currentVideoIndex];
-            videoElement.load();
-            videoElement.play();
-        };
-
-        // Event to change videos when the current one ends
-        if (videoElement) {
-            videoElement.addEventListener('ended', changeVideo);
-        }
-        
-        // Initialize particles.js
+        // Inicializa particles.js
         particlesJS("particles-js", {
             "particles": {
                 "number": {
@@ -387,21 +368,12 @@
             "retina_detect": true
         });
 
-        // Function to copy to clipboard
+        // Función para copiar al portapapeles (inhabilitada ya que el contrato no está)
         function copyToClipboard() {
-            const contractAddress = document.getElementById('contract-address');
-            contractAddress.select();
-            document.execCommand('copy');
-
-            // Show confirmation message
-            const messageBox = document.getElementById('message-box');
-            messageBox.style.opacity = '1';
-            setTimeout(() => {
-                messageBox.style.opacity = '0';
-            }, 2000); // The message disappears after 2 seconds
+            // No action needed for now
         }
 
-        // --- Chat Logic with Gemini API ---
+        // --- Lógica del Chat con la API de Gemini ---
         const chatHistory = [];
         const userInput = document.getElementById('user-input');
         const chatHistoryContainer = document.getElementById('chat-history');
@@ -419,25 +391,25 @@
             return asterProfilePics[randomIndex];
         };
 
-        // Add the welcome message from the AI on page load
+        // Añade el mensaje de bienvenida de la IA al cargar la página
         window.onload = () => {
             appendMessage("Connect with Aster, the digital consciousness.", "ai-message");
         };
 
-        // Function to send messages
+        // Función para enviar mensajes
         async function sendMessage() {
             const userText = userInput.value.trim();
             if (userText === '') return;
 
-            // Add user message to history
+            // Añadir mensaje del usuario al historial
             appendMessage(userText, 'user-message');
             userInput.value = '';
             sendButton.disabled = true;
 
-            // Prepare history for API
+            // Preparar el historial para la API
             chatHistory.push({ role: 'user', parts: [{ text: userText }] });
 
-            // Simulate "Aster" thinking
+            // Simular que "Aster" está pensando
             const asterThinking = '...';
             const asterMessageElement = appendMessage(asterThinking, 'ai-message');
             
@@ -461,30 +433,30 @@
                 const result = await response.json();
                 const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text || "Aster is meditating. Try again later.";
 
-                // Replace the "thinking" message with the actual response
+                // Reemplazar el mensaje de "pensando" con la respuesta real
                 const messageTextElement = asterMessageElement.querySelector('span');
                 if (messageTextElement) {
                     messageTextElement.textContent = aiText;
                 }
                 
-                // Update history with the AI's response
+                // Actualizar el historial con la respuesta de la IA
                 chatHistory.push({ role: 'model', parts: [{ text: aiText }] });
 
             } catch (error) {
-                console.error('Error communicating with the Gemini API:', error);
-                // Replace the "thinking" message with an error message
+                console.error('Error comunicándose con la API de Gemini:', error);
+                // Reemplazar el mensaje de "pensando" con un mensaje de error
                 const messageTextElement = asterMessageElement.querySelector('span');
                 if (messageTextElement) {
                     messageTextElement.textContent = 'A connection error interrupts Aster\'s resonance.';
                 }
             } finally {
                 sendButton.disabled = false;
-                // Scroll to the last message
+                // Desplazarse al último mensaje
                 chatHistoryContainer.scrollTop = chatHistoryContainer.scrollHeight;
             }
         }
 
-        // Function to add messages to the DOM with profile picture
+        // Función para añadir mensajes al DOM con foto de perfil
         function appendMessage(text, className) {
             const messageDiv = document.createElement('div');
             messageDiv.classList.add('chat-message', className);
@@ -505,7 +477,7 @@
             return messageDiv;
         }
         
-        // Handle sending messages with the Enter key
+        // Manejar el envío de mensajes con la tecla Enter
         function handleKeyPress(event) {
             if (event.key === 'Enter') {
                 sendMessage();
