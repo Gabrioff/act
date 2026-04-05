@@ -109,6 +109,7 @@ const calcSolOut = (tokensIn, solPool, tokenPool) => solPool - ((solPool * token
 // ==========================================
 let STATE = {
     route: 'profile', 
+    pendingRoomCode: null, // Para auto-unirse mediante Link
     myProfile: { id: generateId(), name: '', avatar: '👽', isBot: false, reputation: 1, luxuries: [], isSpeaking: false, peerId: null },
     roomConfig: { code: '', maxPlayers: 550, isHost: false, isOffline: false, botsEnabled: true, botCount: 30 },
     players: {},
@@ -153,8 +154,25 @@ let audioContext, analyser, microphone, voiceInterval;
 window.localAudioStream = null;
 
 // ==========================================
-// CARGA Y PROCESADO DE IMÁGENES LOCALES
+// FUNCIONES AUXILIARES: LINKS E IMÁGENES
 // ==========================================
+window.copyInviteLink = function() {
+    const link = window.location.origin + window.location.pathname + '?room=' + STATE.roomConfig.code;
+    try {
+        navigator.clipboard.writeText(link);
+        addToast('Link de Invitación copiado!', '📋');
+    } catch(e) {
+        // Fallback robusto para móviles
+        const dummy = document.createElement('input');
+        document.body.appendChild(dummy);
+        dummy.value = link;
+        dummy.select();
+        document.execCommand('copy');
+        document.body.removeChild(dummy);
+        addToast('Link de Invitación copiado!', '📋');
+    }
+};
+
 window.handleImageUpload = function(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -305,10 +323,10 @@ async function toggleVoice() {
 }
 
 // ==========================================
-// SISTEMA DE RED (OFFLINE / P2P WEBRTC CON STUN)
+// SISTEMA DE RED (OFFLINE / P2P WEBRTC CON STUN MASIVO)
 // ==========================================
 
-// Configuración robusta de WebRTC con servidores públicos gratuitos (Para atravesar Wi-Fis distintos)
+// Configuración SUPER robusta de WebRTC para conectar a través de diferentes Redes y 4G
 const WEBRTC_CONFIG = {
     config: {
         iceServers: [
@@ -316,10 +334,10 @@ const WEBRTC_CONFIG = {
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
             { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' }
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { urls: 'stun:stun.services.mozilla.com' }
         ]
-    },
-    debug: 1
+    }
 };
 
 window.adjustBots = function(targetCount) {
@@ -372,7 +390,7 @@ function initNetwork(roomId, mode, customBotCount = 20) {
             peer.on('open', (id) => {
                 STATE.myProfile.peerId = id;
                 if (STATE.players[STATE.myProfile.id]) STATE.players[STATE.myProfile.id].peerId = id;
-                addToast(`Sala P2P creada con éxito: ${roomId}`, '🌐');
+                addToast(`Sala P2P Servidor Online: ${roomId}`, '🌐');
             });
             peer.on('error', (err) => {
                 console.error(err);
@@ -400,14 +418,14 @@ function initNetwork(roomId, mode, customBotCount = 20) {
             peer = new Peer(WEBRTC_CONFIG);
             peer.on('open', (id) => {
                 STATE.myProfile.peerId = id;
-                addToast("Conectando a la red P2P...", '⏳');
+                addToast("Perforando red hacia el Host...", '⏳');
                 
                 // Conectando al Host (Usando modo reliable para mejor estabilidad a distancia)
                 clientConn = peer.connect(`degen-p2p-sim-${roomId}`, { reliable: true });
                 
                 clientConn.on('open', () => {
                     clientConn.send({ type: 'JOIN_REQ', payload: STATE.myProfile });
-                    addToast("¡Conectado al Host!", '✅');
+                    addToast("¡Conectado al Host Exitosamente!", '✅');
                 });
                 
                 clientConn.on('data', (data) => processMessageAsClient(data));
@@ -427,11 +445,11 @@ function initNetwork(roomId, mode, customBotCount = 20) {
             peer.on('error', (err) => {
                 console.error("PeerJS Error:", err);
                 if (err.type === 'peer-unavailable') {
-                    alert(`No se encontró el Host con el código: ${roomId}. ¿Está seguro de que el código es correcto y el host sigue en línea?`);
+                    alert(`No se encontró el Host en el enlace/código: ${roomId}. Pídele a tu amigo que cree la sala primero.`);
                 } else if (err.type === 'network' || err.type === 'webrtc') {
-                    alert(`La red actual está bloqueando la conexión P2P WebRTC. Intenta usar otra red Wi-Fi o datos móviles.`);
+                    alert(`La red está bloqueando la conexión P2P. Intenta cambiar de Wi-Fi a Datos Móviles o viceversa.`);
                 } else {
-                    alert("Error de conexión P2P: " + err.type);
+                    alert("Error P2P: " + err.type);
                 }
                 STATE.route = 'menu';
                 requestUIRender(true);
@@ -560,8 +578,6 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
         player.tradesInfo[tokenId] = { entryPrice: getPrice(token.solPool, token.tokenPool) };
         
         logMsg = `🟢 ${player.name} compró $${token.ticker}`;
-        // NOTA: Se eliminó hostEmitAlert para trades, 0 spam visual de compras.
-
     } else {
         const currentBal = player.portfolio[tokenId] || 0;
         if (currentBal < amount) return;
@@ -573,7 +589,6 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
         player.solBalance += solOut; player.portfolio[tokenId] -= amount;
         
         logMsg = `🔴 ${player.name} vendió $${token.ticker}`;
-        // NOTA: Se eliminó hostEmitAlert para trades, 0 spam visual de ventas.
         
         if(player.portfolio[tokenId] <= 0) delete player.tradesInfo[tokenId];
     }
@@ -958,7 +973,18 @@ function ViewProfile() {
                 ${AVATARS.map(a => `<button onclick="STATE.myProfile.avatar='${a}'; updateUI();" class="text-3xl p-2 rounded-xl transition-all ${STATE.myProfile.avatar === a ? 'bg-emerald-500/20 scale-110 border border-emerald-500/50' : 'hover:bg-slate-800'}">${a}</button>`).join('')}
             </div>
             <input id="input-name" type="text" placeholder="Tu Alias (Ej. DegenApe)" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 mb-6 text-white focus:border-emerald-500 outline-none font-bold transition-colors" value="${STATE.myProfile.name}" oninput="STATE.myProfile.name = this.value">
-            <button onclick="if(STATE.myProfile.name){ STATE.route='menu'; updateUI(); }" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 rounded-xl transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)]">Continuar al Menú</button>
+            <button onclick="if(STATE.myProfile.name){ 
+                if(STATE.pendingRoomCode) {
+                    STATE.roomConfig = {...STATE.roomConfig, code:STATE.pendingRoomCode, isHost:false, isOffline:false};
+                    initNetwork(STATE.pendingRoomCode, 'client');
+                    STATE.route = 'lobby';
+                    STATE.pendingRoomCode = null;
+                    window.history.pushState({}, document.title, window.location.pathname);
+                } else {
+                    STATE.route='menu'; 
+                }
+                updateUI(); 
+            }" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 rounded-xl transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)]">Continuar</button>
         </div>
     </div>`;
 }
@@ -1010,15 +1036,19 @@ function ViewLobby() {
             <div class="p-6 border-b border-slate-800 bg-slate-950 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
                 <div>
                     <h2 class="text-xl md:text-2xl font-black text-white">${STATE.roomConfig.isOffline ? 'Sala de Simulación Local' : 'Sala de Espera P2P'}</h2>
-                    ${!STATE.roomConfig.isOffline ? `<div class="text-slate-500 text-sm mt-1">Código de la sala: <span class="font-mono text-emerald-400 text-xl md:text-2xl bg-emerald-500/10 px-3 py-1 rounded-lg ml-2 tracking-widest border border-emerald-500/20 font-black">${STATE.roomConfig.code}</span></div>` 
+                    ${!STATE.roomConfig.isOffline ? `
+                    <div class="text-slate-500 text-sm mt-2 flex items-center flex-wrap gap-2">
+                        Código de la sala: <span class="font-mono text-emerald-400 text-xl md:text-2xl bg-emerald-500/10 px-3 py-1 rounded-lg tracking-widest border border-emerald-500/20 font-black">${STATE.roomConfig.code}</span>
+                        ${STATE.roomConfig.isHost ? `<button onclick="window.copyInviteLink()" class="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/40 border border-emerald-500/30 px-3 py-1.5 rounded-lg font-bold text-xs transition-colors flex items-center gap-1 mt-2 sm:mt-0">📋 Copiar Link de Invitación</button>` : ''}
+                    </div>` 
                     : `<div class="text-purple-400 text-xs font-mono font-bold mt-1 uppercase tracking-widest flex items-center gap-2">${Icons.Gamepad} Offline Mode</div>`}
                 </div>
                 ${STATE.roomConfig.isHost ? `
-                <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto mt-4 sm:mt-0">
                     <button onclick="saveGame()" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 py-3 rounded-xl transition-colors flex items-center justify-center gap-2" title="Guardar estado de la partida">${Icons.Save} <span class="sm:hidden">Guardar</span></button>
                     <button onclick="STATE.gameState='playing'; STATE.route='game'; broadcastState(); requestUIRender(true);" class="${STATE.roomConfig.isOffline ? 'bg-purple-600 hover:bg-purple-500 shadow-[0_0_15px_rgba(147,51,234,0.3)]' : 'bg-emerald-500 hover:bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]'} text-slate-950 font-black px-8 py-3 rounded-xl w-full transition-all text-lg flex justify-center items-center gap-2">▶ Iniciar</button>
                 </div>` 
-                : `<div class="text-emerald-400 animate-pulse text-sm font-bold w-full md:w-auto text-center border border-emerald-500/30 bg-emerald-500/10 py-3 px-6 rounded-xl">Esperando al Host...</div>`}
+                : `<div class="text-emerald-400 animate-pulse text-sm font-bold w-full md:w-auto text-center border border-emerald-500/30 bg-emerald-500/10 py-3 px-6 rounded-xl mt-4 sm:mt-0">Esperando al Host...</div>`}
             </div>
             <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 overflow-y-auto">
                 <div class="flex flex-col h-full bg-slate-950 rounded-2xl border border-slate-800 p-4">
@@ -1092,12 +1122,16 @@ function ViewGame() {
                 </div>
                 
                 <div class="flex items-center gap-4 ml-auto">
+                    ${STATE.roomConfig.isHost && !STATE.roomConfig.isOffline ? `<button onclick="window.copyInviteLink()" class="hidden md:flex items-center gap-1.5 text-[10px] font-bold font-mono bg-emerald-950/50 text-emerald-400 px-3 py-1.5 rounded-lg border border-emerald-900/50 hover:bg-emerald-900/50 transition-colors" title="Invitar Amigos">ID: ${STATE.roomConfig.code} 📋</button>` : ''}
+                    
                     ${STATE.roomConfig.isHost ? `<button onclick="saveGame()" class="hidden md:flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-800 px-3 py-1.5 rounded-lg transition-colors">${Icons.Save} Guardar</button>` : ''}
+                    
                     ${!STATE.roomConfig.isHost && !STATE.roomConfig.isOffline ? `
                     <div class="flex items-center gap-1.5 text-xs font-bold font-mono bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800" title="Latencia P2P">
                         <div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_currentColor]"></div><span id="ping-display">${STATE.ping}ms</span>
                     </div>` : ''}
-                    ${STATE.roomConfig.isOffline ? `<div class="text-purple-400 font-mono text-[10px] uppercase font-black tracking-widest border border-purple-500/30 px-2 py-1 rounded bg-purple-500/10">Modo Local</div>` : ''}
+                    
+                    ${STATE.roomConfig.isOffline ? `<div class="text-purple-400 font-mono text-[10px] uppercase font-black tracking-widest border border-purple-500/30 px-2 py-1 rounded bg-purple-500/10 hidden sm:block">Modo Local</div>` : ''}
                     
                     <button onclick="toggleVoice()" class="p-2.5 rounded-full transition-all border ${STATE.voiceActive ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'}" title="${STATE.roomConfig.isOffline ? 'Testear Micrófono' : 'Chat de Voz WebRTC'}">
                         ${STATE.voiceActive ? Icons.Mic : Icons.MicOff}
@@ -1726,6 +1760,13 @@ function renderGiftModal() {
 
 // INIT
 window.onload = () => {
+    // Al cargar, verificamos si hay un parámetro ?room=XXXXX en la URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomParam = urlParams.get('room');
+    if(roomParam && roomParam.length === 5) {
+        STATE.pendingRoomCode = roomParam.toUpperCase();
+    }
+
     if(botInterval) clearInterval(botInterval);
     startBotBrain();
     requestUIRender(true);
