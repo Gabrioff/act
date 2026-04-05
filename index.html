@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DegenTerminal - True P2P Memecoins</title>
+    <title>DegenTerminal - True P2P & Offline</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- WebRTC PeerJS Library for True Internet P2P -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
@@ -59,7 +59,8 @@ const Icons = {
     Save: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`,
     Upload: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
     Heart: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`,
-    Video: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`
+    Video: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`,
+    Gamepad: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>`
 };
 
 const AVATARS = ['👽', '🦍', '🐸', '🐶', '🤖', '💀', '🤡', '🐱', '🦄', '🗿', '🧙‍♂️', '🧛‍♂️'];
@@ -109,7 +110,7 @@ const calcSolOut = (tokensIn, solPool, tokenPool) => solPool - ((solPool * token
 let STATE = {
     route: 'profile', 
     myProfile: { id: generateId(), name: '', avatar: '👽', isBot: false, reputation: 1, luxuries: [], isSpeaking: false, peerId: null },
-    roomConfig: { code: '', maxPlayers: 550, isHost: false, botsEnabled: true, botCount: 30 },
+    roomConfig: { code: '', maxPlayers: 550, isHost: false, isOffline: false, botsEnabled: true, botCount: 30 },
     players: {},
     tokens: {},
     chat: [],
@@ -134,7 +135,8 @@ let STATE = {
     launchData: { name: '', ticker: '', devBuy: '', image: '' },
     
     voiceActive: false,
-    localSpeaking: false
+    localSpeaking: false,
+    _renderedTabId: null // Control de DOM diffing
 };
 
 // WebRTC (PeerJS) variables
@@ -149,22 +151,50 @@ let uiRenderScheduled = false;
 // Audio context para el Chat de voz
 let audioContext, analyser, microphone, voiceInterval;
 window.localAudioStream = null;
-window.activeCalls = {};
 
 // ==========================================
-// GUARDAR Y CARGAR PARTIDA (HOST ONLY)
+// CARGA Y PROCESADO DE IMÁGENES LOCALES
+// ==========================================
+window.handleImageUpload = function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_SIZE = 150;
+            let width = img.width;
+            let height = img.height;
+            if (width > height) { if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; } } 
+            else { if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; } }
+            canvas.width = width; canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            const dataUrl = canvas.toDataURL('image/webp', 0.8);
+            STATE.launchData.image = dataUrl;
+            
+            const urlInput = document.getElementById('l-image');
+            if(urlInput) urlInput.value = '';
+            
+            const preview = document.getElementById('img-preview');
+            if(preview) {
+                preview.src = dataUrl;
+                preview.classList.remove('hidden');
+            }
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+};
+
+// ==========================================
+// GUARDAR Y CARGAR PARTIDA (HOST/OFFLINE)
 // ==========================================
 function saveGame() {
     if(!STATE.roomConfig.isHost) return alert("Solo el Host puede guardar la partida.");
-    
-    const saveData = {
-        players: STATE.players,
-        tokens: STATE.tokens,
-        roomConfig: STATE.roomConfig,
-        chat: STATE.chat,
-        gameState: STATE.gameState
-    };
-    
+    const saveData = { players: STATE.players, tokens: STATE.tokens, roomConfig: STATE.roomConfig, chat: STATE.chat, gameState: STATE.gameState };
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(saveData));
     const dlAnchorElem = document.createElement('a');
     dlAnchorElem.setAttribute("href", dataStr);
@@ -190,17 +220,15 @@ function handleFileLoad(event) {
                 const hostProfile = Object.values(STATE.players).find(p => !p.isBot) || STATE.players[Object.keys(STATE.players)[0]];
                 STATE.myProfile = { ...hostProfile, isSpeaking: false, peerId: null };
                 
-                initNetwork(STATE.roomConfig.code, true, STATE.roomConfig.botCount);
+                const mode = STATE.roomConfig.isOffline ? 'offline' : (STATE.roomConfig.isHost ? 'host' : 'client');
+                initNetwork(STATE.roomConfig.code, mode, STATE.roomConfig.botCount);
+                
                 STATE.route = STATE.gameState === 'playing' ? 'game' : 'lobby';
                 
                 addToast("Partida cargada exitosamente", "✅");
                 requestUIRender(true);
-            } else {
-                alert("Archivo de guardado inválido.");
-            }
-        } catch(err) {
-            alert("Error leyendo el archivo.");
-        }
+            } else { alert("Archivo de guardado inválido."); }
+        } catch(err) { alert("Error leyendo el archivo."); }
     };
     reader.readAsText(file);
 }
@@ -249,17 +277,15 @@ async function toggleVoice() {
         STATE.voiceActive = true;
         updateUI();
 
-        // Llamar a todos los humanos que tengan PeerID
-        Object.values(STATE.players).forEach(p => {
-            if (!p.isBot && p.peerId && p.id !== STATE.myProfile.id) {
-                const call = peer.call(p.peerId, stream);
-                if(call) {
-                    call.on('stream', remoteStream => {
-                        playAudioStream(remoteStream, p.id);
-                    });
+        // En modo P2P, emitir streams. En modo offline solo nos vemos la animación del micro.
+        if (peer && !STATE.roomConfig.isOffline) {
+            Object.values(STATE.players).forEach(p => {
+                if (!p.isBot && p.peerId && p.id !== STATE.myProfile.id) {
+                    const call = peer.call(p.peerId, stream);
+                    if(call) { call.on('stream', remoteStream => { playAudioStream(remoteStream, p.id); }); }
                 }
-            }
-        });
+            });
+        }
 
         voiceInterval = setInterval(() => {
             analyser.getByteFrequencyData(dataArray);
@@ -275,15 +301,11 @@ async function toggleVoice() {
                 updateUI();
             }
         }, 150); 
-    } catch(e) {
-        console.error(e);
-        alert("Permiso de micrófono denegado o no disponible.");
-    }
+    } catch(e) { console.error(e); alert("Permiso de micrófono denegado o no disponible."); }
 }
 
-
 // ==========================================
-// SISTEMA DE RED P2P (WEBRTC PEERJS)
+// SISTEMA DE RED (OFFLINE / P2P WEBRTC)
 // ==========================================
 window.adjustBots = function(targetCount) {
     if (!STATE.roomConfig.isHost) return;
@@ -311,22 +333,33 @@ window.adjustBots = function(targetCount) {
     broadcastState();
 };
 
-function initNetwork(roomId, isHostConfig, customBotCount = 20) {
+function initNetwork(roomId, mode, customBotCount = 20) {
     if (peer) { peer.destroy(); peer = null; }
     hostConnections = [];
     clientConn = null;
 
-    if (isHostConfig) {
+    if (mode === 'offline') {
+        STATE.roomConfig.isOffline = true;
+        STATE.roomConfig.isHost = true;
+        STATE.roomConfig.code = 'LOCAL';
+        STATE.players[STATE.myProfile.id] = { ...STATE.myProfile, solBalance: 10, portfolio: {}, reputation: 1, luxuries: [], tradesInfo: {}, isSpeaking: false };
+        window.adjustBots(customBotCount);
+        addToast("Modo Offline Activado", "🔌");
+        requestUIRender(true);
+        return;
+    }
+
+    // Modo Online
+    STATE.roomConfig.isOffline = false;
+    if (mode === 'host') {
         try {
             peer = new Peer(`degen-p2p-sim-${roomId}`);
             peer.on('open', (id) => {
                 STATE.myProfile.peerId = id;
-                if (STATE.players[STATE.myProfile.id]) {
-                    STATE.players[STATE.myProfile.id].peerId = id;
-                }
+                if (STATE.players[STATE.myProfile.id]) STATE.players[STATE.myProfile.id].peerId = id;
                 addToast(`Sala P2P creada con éxito: ${roomId}`, '🌐');
             });
-            peer.on('error', (err) => addToast(`Error red P2P. Modo local offline activado.`, '⚠️'));
+            peer.on('error', (err) => addToast(`Error de conexión P2P. Intenta de nuevo.`, '⚠️'));
             
             peer.on('connection', (conn) => {
                 hostConnections.push(conn);
@@ -334,22 +367,17 @@ function initNetwork(roomId, isHostConfig, customBotCount = 20) {
                 conn.on('close', () => { hostConnections = hostConnections.filter(c => c !== conn); });
             });
 
-            // Recibir llamadas de audio
             peer.on('call', call => {
-                if (window.localAudioStream) call.answer(window.localAudioStream);
-                else call.answer(); 
+                if (window.localAudioStream) call.answer(window.localAudioStream); else call.answer(); 
                 call.on('stream', remoteStream => playAudioStream(remoteStream, call.peer));
             });
-        } catch(e) {
-            console.error("PeerJS error", e);
-            addToast("Modo Offline (Bots activos).", "🔌");
-        }
+        } catch(e) { console.error("PeerJS error", e); addToast("Error de red.", "🔌"); }
 
         STATE.players[STATE.myProfile.id] = { ...STATE.myProfile, solBalance: 10, portfolio: {}, reputation: 1, luxuries: [], tradesInfo: {}, isSpeaking: false };
         window.adjustBots(customBotCount);
         requestUIRender(true);
 
-    } else {
+    } else if (mode === 'client') {
         try {
             peer = new Peer();
             peer.on('open', (id) => {
@@ -371,10 +399,8 @@ function initNetwork(roomId, isHostConfig, customBotCount = 20) {
                 });
             });
 
-            // Recibir llamadas de audio
             peer.on('call', call => {
-                if (window.localAudioStream) call.answer(window.localAudioStream);
-                else call.answer(); 
+                if (window.localAudioStream) call.answer(window.localAudioStream); else call.answer(); 
                 call.on('stream', remoteStream => playAudioStream(remoteStream, call.peer));
             });
 
@@ -383,9 +409,7 @@ function initNetwork(roomId, isHostConfig, customBotCount = 20) {
                 STATE.route = 'menu';
                 requestUIRender(true);
             });
-        } catch(e) {
-            alert("Error del navegador al intentar P2P.");
-        }
+        } catch(e) { alert("Error del navegador al intentar P2P."); }
     }
 
     if (pingerInterval) clearInterval(pingerInterval);
@@ -398,7 +422,6 @@ function initNetwork(roomId, isHostConfig, customBotCount = 20) {
 
 function processMessageAsHost(data, conn) {
     const { type, payload, senderId, time } = data;
-
     if (type === 'PING') { conn.send({ type: 'PONG', target: senderId, time }); return; }
     
     if (type === 'JOIN_REQ') {
@@ -464,16 +487,20 @@ function processMessageAsClient(data) {
 
 function broadcastState() {
     if (STATE.roomConfig.isHost) {
-        const msg = { type: 'STATE_SYNC', payload: { players: STATE.players, tokens: STATE.tokens, chat: STATE.chat, gameState: STATE.gameState } };
-        hostConnections.forEach(conn => conn.send(msg));
+        if (!STATE.roomConfig.isOffline) {
+            const msg = { type: 'STATE_SYNC', payload: { players: STATE.players, tokens: STATE.tokens, chat: STATE.chat, gameState: STATE.gameState } };
+            hostConnections.forEach(conn => conn.send(msg));
+        }
         requestUIRender(); 
     }
 }
 
 function hostEmitAlert(senderId, msg, icon) {
     if(STATE.roomConfig.isHost) {
-        const packet = { type: 'EVENT_ALERT', senderId, payload: { msg, icon } };
-        hostConnections.forEach(conn => conn.send(packet));
+        if (!STATE.roomConfig.isOffline) {
+            const packet = { type: 'EVENT_ALERT', senderId, payload: { msg, icon } };
+            hostConnections.forEach(conn => conn.send(packet));
+        }
         if (STATE.trackedIds.has(senderId)) addToast(msg, icon);
     }
 }
@@ -504,7 +531,6 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
         player.tradesInfo[tokenId] = { entryPrice: getPrice(token.solPool, token.tokenPool) };
         
         logMsg = `🟢 ${player.name} compró $${token.ticker}`;
-        hostEmitAlert(playerId, logMsg, '🟢'); 
 
     } else {
         const currentBal = player.portfolio[tokenId] || 0;
@@ -517,7 +543,6 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
         player.solBalance += solOut; player.portfolio[tokenId] -= amount;
         
         logMsg = `🔴 ${player.name} vendió $${token.ticker}`;
-        hostEmitAlert(playerId, logMsg, '🔴');
         
         if(player.portfolio[tokenId] <= 0) delete player.tradesInfo[tokenId];
     }
@@ -626,7 +651,6 @@ function handleBuyLuxuryHost(itemId, playerId) {
         const found = SHOP_CATEGORIES[cat].find(i => i.id === itemId);
         if(found) item = found;
     }
-    
     if (!player || !item || player.solBalance < item.price) return;
 
     player.solBalance -= item.price;
@@ -758,37 +782,27 @@ function dispatchAction(type, payload) {
 }
 
 // ==========================================
-// RENDERING & DOM DIFFING LOGIC (Anti-Refresco)
+// RENDERING UI ENGINE (SKELETONS + PARTIALS)
 // ==========================================
+function switchTab(tabId) {
+    STATE.activeTab = tabId;
+    STATE.selectedTokenId = null;
+    STATE._renderedTabId = null; 
+    updateUI();
+}
 
-function smartRender(containerId, newHTML) {
-    const el = document.getElementById(containerId);
-    if (!el) return;
+function selectToken(id) {
+    STATE.selectedTokenId = id;
+    STATE.tradeAmount = '';
+    STATE._renderedTabId = null; 
+    updateUI();
+}
 
-    // Preservar foco de inputs
-    const active = document.activeElement;
-    const focusedId = active && active.id ? active.id : null;
-    let selStart = 0, selEnd = 0;
-
-    if (focusedId && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
-        selStart = active.selectionStart || 0;
-        selEnd = active.selectionEnd || 0;
-    }
-
-    if (el.innerHTML !== newHTML) {
-        el.innerHTML = newHTML;
-    }
-
-    // Restaurar foco
-    if (focusedId) {
-        const newFocus = document.getElementById(focusedId);
-        if (newFocus && typeof newFocus.setSelectionRange === 'function') {
-            newFocus.focus();
-            try { newFocus.setSelectionRange(selStart, selEnd); } catch(e){}
-        } else if (newFocus) {
-            newFocus.focus();
-        }
-    }
+function setTradeType(type) {
+    STATE.tradeType = type;
+    STATE.tradeAmount = '';
+    STATE._renderedTabId = null; 
+    updateUI();
 }
 
 function addToast(msg, icon) {
@@ -812,6 +826,31 @@ function updateToasts() {
     }
 }
 
+// Smart Render helper for DOM Diffing
+function smartRender(containerId, newHTML) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+
+    const active = document.activeElement;
+    const focusedId = active && active.id ? active.id : null;
+    let selStart = 0, selEnd = 0;
+
+    if (focusedId && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+        selStart = active.selectionStart || 0;
+        selEnd = active.selectionEnd || 0;
+    }
+
+    if (el.innerHTML !== newHTML) { el.innerHTML = newHTML; }
+
+    if (focusedId) {
+        const newFocus = document.getElementById(focusedId);
+        if (newFocus && typeof newFocus.setSelectionRange === 'function') {
+            newFocus.focus();
+            try { newFocus.setSelectionRange(selStart, selEnd); } catch(e){}
+        } else if (newFocus) { newFocus.focus(); }
+    }
+}
+
 function requestUIRender(forceFull = false) {
     if (forceFull || STATE.route !== 'game') {
         const app = document.getElementById('app');
@@ -820,6 +859,7 @@ function requestUIRender(forceFull = false) {
         else if (STATE.route === 'lobby') app.innerHTML = ViewLobby();
         else if (STATE.route === 'game') {
             app.innerHTML = ViewGame();
+            STATE._renderedTabId = null; 
             updateDynamicDOM(); 
         }
         return;
@@ -833,9 +873,7 @@ function requestUIRender(forceFull = false) {
     });
 }
 
-function updateUI() {
-    requestUIRender(true);
-}
+function updateUI() { requestUIRender(true); }
 
 function updateDynamicDOM() {
     const me = STATE.players[STATE.myProfile.id] || { solBalance: 0 };
@@ -845,7 +883,7 @@ function updateDynamicDOM() {
     const chatEl = document.getElementById('chat-list');
     if (chatEl) {
         const chatHTML = STATE.chat.filter(m => STATE.chatTab === 'global' ? !m.sys : m.sys).map(msg => {
-            const isImg = msg.text.match(/^https?:\/\/.*\.(png|jpg|jpeg|gif|webp)(\?.*)?$/i);
+            const isImg = msg.text.match(/^https?:\/\/.*\.(png|jpg|jpeg|gif|webp)(\?.*)?$/i) || msg.text.startsWith('data:image');
             return `
             <div class="p-3 rounded-xl ${msg.sys ? 'text-slate-400 font-mono text-[10px] md:text-xs border border-slate-800/50 bg-slate-950/80 shadow-inner' : 'bg-slate-800/80 text-slate-200 border border-slate-700/50'}">
                 ${!msg.sys ? `<div class="font-bold text-emerald-400 text-xs mb-1">${msg.sender}</div>` : ''}
@@ -856,19 +894,32 @@ function updateDynamicDOM() {
         smartRender('chat-list', chatHTML);
     }
 
-    let tabHTML = '';
-    if (STATE.selectedTokenId) tabHTML = RenderTokenDetail();
-    else if (STATE.activeTab === 'market') tabHTML = RenderMarket();
-    else if (STATE.activeTab === 'portfolio') tabHTML = RenderLeaderboard();
-    else if (STATE.activeTab === 'shop') tabHTML = RenderShop();
-    else if (STATE.activeTab === 'launch') tabHTML = RenderLaunch();
-    else if (STATE.activeTab === 'streams') tabHTML = RenderStreams();
-    else if (STATE.activeTab === 'charity') tabHTML = RenderCharity();
+    const el = document.getElementById('tab-content');
+    if (!el) return;
 
-    if (tabHTML) smartRender('tab-content', tabHTML);
+    let currentTabId = STATE.selectedTokenId ? 'detail-' + STATE.selectedTokenId + '-' + STATE.tradeType : STATE.activeTab;
+    
+    // 1. RENDER SKELETON (Solo si el ID de la pestaña cambia)
+    if (STATE._renderedTabId !== currentTabId) {
+        if (STATE.selectedTokenId) el.innerHTML = RenderTokenDetailSkeleton();
+        else if (STATE.activeTab === 'market') el.innerHTML = RenderMarketSkeleton();
+        else if (STATE.activeTab === 'portfolio') el.innerHTML = RenderLeaderboardSkeleton();
+        else if (STATE.activeTab === 'shop') el.innerHTML = RenderShop();
+        else if (STATE.activeTab === 'launch') el.innerHTML = RenderLaunch();
+        else if (STATE.activeTab === 'streams') el.innerHTML = RenderStreamsSkeleton();
+        else if (STATE.activeTab === 'charity') el.innerHTML = RenderCharity();
+        
+        STATE._renderedTabId = currentTabId;
+    }
+
+    // 2. ACTUALIZACIÓN PARCIAL DINÁMICA (Sin tocar los inputs)
+    if (STATE.selectedTokenId) UpdateTokenDetailDynamic();
+    else if (STATE.activeTab === 'market') UpdateMarketDynamic();
+    else if (STATE.activeTab === 'portfolio') UpdateLeaderboardDynamic();
+    else if (STATE.activeTab === 'streams') UpdateStreamsDynamic();
 }
 
-// ---------------- VIEWS ESTÁTICAS ----------------
+// ---------------- VIEWS ESTÁTICAS DE INICIO ----------------
 
 function ViewProfile() {
     return `
@@ -894,24 +945,31 @@ function ViewMenu() {
             <p class="text-slate-500 font-mono mt-2 tracking-widest text-xs">Simulador P2P Ultimate</p>
         </div>
         <div class="flex flex-col gap-4 w-full max-w-sm relative z-10">
-            <button onclick="const c=generateRoomCode(); STATE.roomConfig={...STATE.roomConfig, code:c, isHost:true}; initNetwork(c, true, STATE.roomConfig.botCount); STATE.route='lobby'; updateUI();" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-4 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all flex justify-center items-center gap-2 text-lg">
-                ${Icons.Settings} Crear Sala (Host)
-            </button>
-            <div class="flex justify-between gap-2 mt-2">
-                <button onclick="document.getElementById('file-loader').click()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl transition-colors flex justify-center items-center gap-2 text-sm border border-slate-700">
-                    ${Icons.Upload} Cargar Partida
-                </button>
-            </div>
             
-            <div class="relative mt-6 mb-2">
+            <button onclick="STATE.roomConfig={...STATE.roomConfig, code:'LOCAL', isHost:true, isOffline:true}; initNetwork('LOCAL', 'offline', STATE.roomConfig.botCount); STATE.route='lobby'; updateUI();" class="bg-purple-600 hover:bg-purple-500 text-white font-black py-4 rounded-xl shadow-[0_0_20px_rgba(147,51,234,0.3)] transition-all flex justify-center items-center gap-2 text-lg border border-purple-500/50">
+                ${Icons.Gamepad} Jugar Solo (Offline)
+            </button>
+
+            <div class="relative my-2">
                 <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-800"></div></div>
-                <div class="relative flex justify-center text-[10px]"><span class="bg-slate-950 px-3 text-slate-500 uppercase tracking-widest font-black rounded-full border border-slate-800">Unirse a sala P2P</span></div>
+                <div class="relative flex justify-center text-[10px]"><span class="bg-slate-950 px-3 text-slate-500 uppercase tracking-widest font-black rounded-full border border-slate-800">Multijugador Online (P2P)</span></div>
             </div>
+
+            <button onclick="const c=generateRoomCode(); STATE.roomConfig={...STATE.roomConfig, code:c, isHost:true, isOffline:false}; initNetwork(c, 'host', STATE.roomConfig.botCount); STATE.route='lobby'; updateUI();" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3 rounded-xl transition-all flex justify-center items-center gap-2 text-base">
+                ${Icons.Settings} Crear Sala P2P (Host)
+            </button>
             <div class="flex gap-2">
                 <input id="input-room-code" type="text" maxlength="5" placeholder="ID de 5 dígitos" class="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-center text-xl font-mono text-white tracking-widest focus:border-emerald-500 outline-none transition-colors" />
-                <button onclick="const c=document.getElementById('input-room-code').value; if(c.length!==5)return alert('ID inválido'); STATE.roomConfig={...STATE.roomConfig, code:c, isHost:false}; initNetwork(c, false); STATE.route='lobby'; updateUI();" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-6 rounded-xl transition-colors">Entrar</button>
+                <button onclick="const c=document.getElementById('input-room-code').value; if(c.length!==5)return alert('ID inválido'); STATE.roomConfig={...STATE.roomConfig, code:c, isHost:false, isOffline:false}; initNetwork(c, 'client'); STATE.route='lobby'; updateUI();" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-6 rounded-xl transition-colors">Entrar</button>
             </div>
-            <button onclick="STATE.route='profile'; updateUI();" class="mt-8 text-xs text-slate-500 hover:text-white uppercase tracking-widest font-bold">← Cambiar Perfil</button>
+            
+            <div class="flex justify-between gap-2 mt-4">
+                <button onclick="document.getElementById('file-loader').click()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl transition-colors flex justify-center items-center gap-2 text-sm border border-slate-700">
+                    ${Icons.Upload} Cargar Partida Guardada
+                </button>
+            </div>
+
+            <button onclick="STATE.route='profile'; updateUI();" class="mt-4 text-xs text-slate-500 hover:text-white uppercase tracking-widest font-bold">← Cambiar Perfil</button>
         </div>
     </div>`;
 }
@@ -922,19 +980,20 @@ function ViewLobby() {
         <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
             <div class="p-6 border-b border-slate-800 bg-slate-950 flex justify-between items-center flex-wrap gap-4 shrink-0">
                 <div>
-                    <h2 class="text-2xl font-black text-white">Sala de Espera P2P</h2>
-                    <div class="text-slate-500 text-sm mt-1">ID de Conexión: <span class="font-mono text-emerald-400 text-xl bg-emerald-500/10 px-3 py-1 rounded-lg ml-2 tracking-widest border border-emerald-500/20">${STATE.roomConfig.code}</span></div>
+                    <h2 class="text-2xl font-black text-white">${STATE.roomConfig.isOffline ? 'Sala de Simulación Local' : 'Sala de Espera P2P'}</h2>
+                    ${!STATE.roomConfig.isOffline ? `<div class="text-slate-500 text-sm mt-1">ID de Conexión: <span class="font-mono text-emerald-400 text-xl bg-emerald-500/10 px-3 py-1 rounded-lg ml-2 tracking-widest border border-emerald-500/20">${STATE.roomConfig.code}</span></div>` 
+                    : `<div class="text-purple-400 text-xs font-mono font-bold mt-1 uppercase tracking-widest flex items-center gap-2">${Icons.Gamepad} Offline Mode</div>`}
                 </div>
                 ${STATE.roomConfig.isHost ? `
                 <div class="flex gap-2">
                     <button onclick="saveGame()" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 py-3 rounded-xl transition-colors flex items-center gap-2" title="Guardar estado de la partida">${Icons.Save} Guardar</button>
-                    <button onclick="STATE.gameState='playing'; STATE.route='game'; broadcastState(); requestUIRender(true);" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-8 py-3 rounded-xl w-full md:w-auto shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-all text-lg">▶ Iniciar Partida</button>
+                    <button onclick="STATE.gameState='playing'; STATE.route='game'; broadcastState(); requestUIRender(true);" class="${STATE.roomConfig.isOffline ? 'bg-purple-600 hover:bg-purple-500 shadow-[0_0_15px_rgba(147,51,234,0.3)]' : 'bg-emerald-500 hover:bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]'} text-slate-950 font-black px-8 py-3 rounded-xl w-full md:w-auto transition-all text-lg flex items-center gap-2">▶ Iniciar Partida</button>
                 </div>` 
                 : `<div class="text-emerald-400 animate-pulse text-sm font-bold w-full md:w-auto text-center border border-emerald-500/30 bg-emerald-500/10 py-3 px-6 rounded-xl">Esperando al Host para iniciar...</div>`}
             </div>
             <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 overflow-y-auto">
                 <div class="flex flex-col h-full bg-slate-950 rounded-2xl border border-slate-800 p-4">
-                    <h3 class="text-xs font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">${Icons.Users} Jugadores Conectados (${Object.keys(STATE.players).length})</h3>
+                    <h3 class="text-xs font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">${Icons.Users} Jugadores Simulados (${Object.keys(STATE.players).length})</h3>
                     <div class="space-y-2 flex-1 overflow-y-auto pr-2">
                         ${Object.values(STATE.players).map(p => `
                             <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center gap-3">
@@ -950,10 +1009,10 @@ function ViewLobby() {
                 </div>
                 ${STATE.roomConfig.isHost ? `
                 <div class="bg-slate-950 border border-slate-800 rounded-2xl p-6 h-fit shrink-0">
-                    <h3 class="text-xs font-black text-slate-500 uppercase tracking-widest mb-6 flex items-center gap-2">${Icons.Settings} Configuración del Servidor</h3>
+                    <h3 class="text-xs font-black text-slate-500 uppercase tracking-widest mb-6 flex items-center gap-2">${Icons.Settings} Configuración del Mercado</h3>
                     <label class="block mb-6">
-                        <div class="flex justify-between text-xs text-slate-400 font-bold mb-2 uppercase tracking-wide"><span>Max Jugadores/Bots:</span><span class="text-emerald-400 font-mono text-sm" id="lbl-maxplayers">${STATE.roomConfig.maxPlayers}</span></div>
-                        <input type="range" min="2" max="550" value="${STATE.roomConfig.maxPlayers}" oninput="document.getElementById('lbl-maxplayers').innerText=this.value; STATE.roomConfig.maxPlayers=parseInt(this.value);" onchange="broadcastState();" class="w-full accent-emerald-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
+                        <div class="flex justify-between text-xs text-slate-400 font-bold mb-2 uppercase tracking-wide"><span>Max Actores (Bots/Humanos):</span><span class="${STATE.roomConfig.isOffline ? 'text-purple-400' : 'text-emerald-400'} font-mono text-sm" id="lbl-maxplayers">${STATE.roomConfig.maxPlayers}</span></div>
+                        <input type="range" min="2" max="550" value="${STATE.roomConfig.maxPlayers}" oninput="document.getElementById('lbl-maxplayers').innerText=this.value; STATE.roomConfig.maxPlayers=parseInt(this.value);" onchange="broadcastState();" class="w-full ${STATE.roomConfig.isOffline ? 'accent-purple-500' : 'accent-emerald-500'} h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
                     </label>
                     <label class="flex items-center gap-3 cursor-pointer mb-6 bg-slate-900 p-4 rounded-xl border border-slate-800 hover:border-emerald-500/50 transition-colors">
                         <input type="checkbox" ${STATE.roomConfig.botsEnabled ? 'checked' : ''} onchange="STATE.roomConfig.botsEnabled=this.checked; window.adjustBots(this.checked ? STATE.roomConfig.botCount : 0);" class="w-5 h-5 accent-emerald-500 rounded cursor-pointer" />
@@ -961,8 +1020,8 @@ function ViewLobby() {
                     </label>
                     ${STATE.roomConfig.botsEnabled ? `
                     <label class="block bg-slate-900 p-4 rounded-xl border border-slate-800">
-                        <div class="flex justify-between text-xs text-slate-400 font-bold mb-2 uppercase tracking-wide"><span>Bots Iniciales en Sala:</span><span class="text-emerald-400 font-mono text-sm" id="lbl-bots-count">${STATE.roomConfig.botCount}</span></div>
-                        <input type="range" min="1" max="500" value="${STATE.roomConfig.botCount}" oninput="document.getElementById('lbl-bots-count').innerText=this.value; STATE.roomConfig.botCount=parseInt(this.value);" onchange="window.adjustBots(parseInt(this.value));" class="w-full accent-emerald-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
+                        <div class="flex justify-between text-xs text-slate-400 font-bold mb-2 uppercase tracking-wide"><span>Bots Iniciales en Sala:</span><span class="${STATE.roomConfig.isOffline ? 'text-purple-400' : 'text-emerald-400'} font-mono text-sm" id="lbl-bots-count">${STATE.roomConfig.botCount}</span></div>
+                        <input type="range" min="1" max="500" value="${STATE.roomConfig.botCount}" oninput="document.getElementById('lbl-bots-count').innerText=this.value; STATE.roomConfig.botCount=parseInt(this.value);" onchange="window.adjustBots(parseInt(this.value));" class="w-full ${STATE.roomConfig.isOffline ? 'accent-purple-500' : 'accent-emerald-500'} h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
                     </label>` : ''}
                 </div>` : ''}
             </div>
@@ -995,21 +1054,22 @@ function ViewGame() {
     <main class="${STATE.activeTab === 'chat' ? 'hidden md:flex' : 'flex'} flex-1 flex flex-col h-screen overflow-hidden order-1 md:order-2 bg-[#020617]">
         <nav class="bg-slate-900 border-b border-slate-800 p-3 md:p-5 flex justify-between items-center shrink-0">
             <div class="hidden md:flex gap-5 xl:gap-6 overflow-x-auto hide-scrollbar">
-                <button onclick="STATE.activeTab='market'; STATE.selectedTokenId=null; updateUI();" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='market' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Chart} Mercado</button>
-                <button onclick="STATE.activeTab='portfolio'; STATE.selectedTokenId=null; updateUI();" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='portfolio' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Users} Top Degens</button>
-                <button onclick="STATE.activeTab='shop'; STATE.selectedTokenId=null; updateUI();" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='shop' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.PieChart} Lujos</button>
-                <button onclick="STATE.activeTab='streams'; STATE.selectedTokenId=null; updateUI();" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='streams' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Video} Streams</button>
-                <button onclick="STATE.activeTab='charity'; STATE.selectedTokenId=null; updateUI();" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='charity' ? 'text-pink-500' : 'text-slate-500 hover:text-pink-400'}">${Icons.Heart} Beneficencia</button>
+                <button onclick="switchTab('market');" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='market' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Chart} Mercado</button>
+                <button onclick="switchTab('portfolio');" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='portfolio' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Users} Top Degens</button>
+                <button onclick="switchTab('shop');" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='shop' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.PieChart} Lujos</button>
+                <button onclick="switchTab('streams');" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='streams' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Video} Streams</button>
+                <button onclick="switchTab('charity');" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='charity' ? 'text-pink-500' : 'text-slate-500 hover:text-pink-400'}">${Icons.Heart} Beneficencia</button>
             </div>
             
             <div class="flex items-center gap-4 ml-auto">
                 ${STATE.roomConfig.isHost ? `<button onclick="saveGame()" class="hidden md:flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-800 px-3 py-1.5 rounded-lg transition-colors">${Icons.Save} Guardar</button>` : ''}
-                ${!STATE.roomConfig.isHost ? `
+                ${!STATE.roomConfig.isHost && !STATE.roomConfig.isOffline ? `
                 <div class="flex items-center gap-1.5 text-xs font-bold font-mono bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800" title="Latencia P2P">
                     <div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_currentColor]"></div><span id="ping-display">${STATE.ping}ms</span>
                 </div>` : ''}
+                ${STATE.roomConfig.isOffline ? `<div class="text-purple-400 font-mono text-[10px] uppercase font-black tracking-widest border border-purple-500/30 px-2 py-1 rounded bg-purple-500/10">Modo Local</div>` : ''}
                 
-                <button onclick="toggleVoice()" class="p-2.5 rounded-full transition-all border ${STATE.voiceActive ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'}" title="Chat de Voz WebRTC">
+                <button onclick="toggleVoice()" class="p-2.5 rounded-full transition-all border ${STATE.voiceActive ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'}" title="${STATE.roomConfig.isOffline ? 'Testear Micrófono' : 'Chat de Voz WebRTC'}">
                     ${STATE.voiceActive ? Icons.Mic : Icons.MicOff}
                 </button>
 
@@ -1023,38 +1083,30 @@ function ViewGame() {
                     <div class="text-3xl bg-slate-950 rounded-full w-12 h-12 flex items-center justify-center border border-slate-800 hover:border-emerald-500/50 transition-colors z-10 relative ${STATE.localSpeaking ? 'bg-emerald-900/40' : ''}">${STATE.myProfile.avatar}</div>
                     ${STATE.localSpeaking ? `<div class="absolute inset-0 speaking-ring border-emerald-500"></div>` : ''}
                 </div>
-                <button onclick="if(voiceInterval) { clearInterval(voiceInterval); STATE.voiceActive = false; } if(audioContext) audioContext.close(); STATE.route='menu'; updateUI();" class="text-slate-500 hover:text-red-400 transition-colors p-2" title="Salir de la Sala">${Icons.LogOut}</button>
+                <button onclick="if(voiceInterval) { clearInterval(voiceInterval); STATE.voiceActive = false; } if(audioContext) audioContext.close(); STATE.route='menu'; updateUI();" class="text-slate-500 hover:text-red-400 transition-colors p-2" title="Salir al Menú">${Icons.LogOut}</button>
             </div>
         </nav>
 
         <div id="tab-content" class="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 relative">
-            <!-- Dynamic Content gets rendered here -->
+            <!-- Skeletons go here -->
         </div>
 
         <!-- MOBILE BOTTOM NAV -->
         <div class="md:hidden fixed bottom-0 left-0 w-full bg-slate-950 border-t border-slate-800 flex overflow-x-auto hide-scrollbar gap-2 p-3 z-50 shadow-[0_-10px_20px_rgba(0,0,0,0.5)]">
-           <button onclick="STATE.activeTab='market'; STATE.selectedTokenId=null; updateUI();" class="flex-1 min-w-[60px] flex flex-col items-center gap-1 ${STATE.activeTab==='market'?'text-emerald-400':'text-slate-500'}">${Icons.Chart}<span class="text-[10px] font-bold uppercase">Mercado</span></button>
-           <button onclick="STATE.activeTab='portfolio'; STATE.selectedTokenId=null; updateUI();" class="flex-1 min-w-[60px] flex flex-col items-center gap-1 ${STATE.activeTab==='portfolio'?'text-emerald-400':'text-slate-500'}">${Icons.Users}<span class="text-[10px] font-bold uppercase">Top</span></button>
-           <button onclick="STATE.activeTab='shop'; STATE.selectedTokenId=null; updateUI();" class="flex-1 min-w-[60px] flex flex-col items-center gap-1 ${STATE.activeTab==='shop'?'text-emerald-400':'text-slate-500'}">${Icons.PieChart}<span class="text-[10px] font-bold uppercase">Lujos</span></button>
-           <button onclick="STATE.activeTab='streams'; STATE.selectedTokenId=null; updateUI();" class="flex-1 min-w-[60px] flex flex-col items-center gap-1 ${STATE.activeTab==='streams'?'text-emerald-400':'text-slate-500'}">${Icons.Video}<span class="text-[10px] font-bold uppercase">Streams</span></button>
-           <button onclick="STATE.activeTab='charity'; STATE.selectedTokenId=null; updateUI();" class="flex-1 min-w-[60px] flex flex-col items-center gap-1 ${STATE.activeTab==='charity'?'text-pink-500':'text-slate-500'}">${Icons.Heart}<span class="text-[10px] font-bold uppercase">Ayuda</span></button>
-           <button onclick="STATE.activeTab='chat'; STATE.selectedTokenId=null; updateUI();" class="flex-1 min-w-[60px] flex flex-col items-center gap-1 ${STATE.activeTab==='chat'?'text-emerald-400':'text-slate-500'}">${Icons.Message}<span class="text-[10px] font-bold uppercase">Chat</span></button>
+           <button onclick="switchTab('market');" class="flex-1 min-w-[60px] flex flex-col items-center gap-1 ${STATE.activeTab==='market'?'text-emerald-400':'text-slate-500'}">${Icons.Chart}<span class="text-[10px] font-bold uppercase">Mercado</span></button>
+           <button onclick="switchTab('portfolio');" class="flex-1 min-w-[60px] flex flex-col items-center gap-1 ${STATE.activeTab==='portfolio'?'text-emerald-400':'text-slate-500'}">${Icons.Users}<span class="text-[10px] font-bold uppercase">Top</span></button>
+           <button onclick="switchTab('shop');" class="flex-1 min-w-[60px] flex flex-col items-center gap-1 ${STATE.activeTab==='shop'?'text-emerald-400':'text-slate-500'}">${Icons.PieChart}<span class="text-[10px] font-bold uppercase">Lujos</span></button>
+           <button onclick="switchTab('streams');" class="flex-1 min-w-[60px] flex flex-col items-center gap-1 ${STATE.activeTab==='streams'?'text-emerald-400':'text-slate-500'}">${Icons.Video}<span class="text-[10px] font-bold uppercase">Streams</span></button>
+           <button onclick="switchTab('charity');" class="flex-1 min-w-[60px] flex flex-col items-center gap-1 ${STATE.activeTab==='charity'?'text-pink-500':'text-slate-500'}">${Icons.Heart}<span class="text-[10px] font-bold uppercase">Ayuda</span></button>
+           <button onclick="switchTab('chat');" class="flex-1 min-w-[60px] flex flex-col items-center gap-1 ${STATE.activeTab==='chat'?'text-emerald-400':'text-slate-500'}">${Icons.Message}<span class="text-[10px] font-bold uppercase">Chat</span></button>
         </div>
     </main>`;
 }
 
-// ---------------- DINAMICAS DE LAS PESTAÑAS ----------------
+// ---------------- SKELETONS Y PARTIALS DINÁMICOS ----------------
 
-function RenderMarket() {
-    const filtered = Object.values(STATE.tokens)
-        .sort((a,b) => b.solPool - a.solPool)
-        .filter(t => t.name.toLowerCase().includes(STATE.searchQuery.toLowerCase()) || t.ticker.toLowerCase().includes(STATE.searchQuery.toLowerCase()))
-        .filter(t => {
-            if(STATE.marketFilter === 'human') return !STATE.players[t.creatorId]?.isBot;
-            if(STATE.marketFilter === 'bot') return STATE.players[t.creatorId]?.isBot;
-            return true;
-        });
-
+// --- MERCADO ---
+function RenderMarketSkeleton() {
     return `
     <div class="space-y-6 animate-fade-in max-w-7xl mx-auto">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -1069,129 +1121,242 @@ function RenderMarket() {
                     <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">${Icons.Search}</span>
                     <input id="input-search" type="text" placeholder="Buscar token..." value="${STATE.searchQuery}" oninput="STATE.searchQuery = this.value; requestUIRender();" class="w-full bg-slate-900 border border-slate-800 rounded-xl pl-12 pr-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors shadow-inner" />
                 </div>
-                <button onclick="STATE.activeTab='launch'; updateUI();" class="w-full md:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-6 py-3 rounded-xl flex items-center justify-center gap-2 whitespace-nowrap shadow-[0_0_20px_rgba(16,185,129,0.2)] transition-all">${Icons.Rocket} <span>Crear Token</span></button>
+                <button onclick="switchTab('launch');" class="w-full md:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-6 py-3 rounded-xl flex items-center justify-center gap-2 whitespace-nowrap shadow-[0_0_20px_rgba(16,185,129,0.2)] transition-all">${Icons.Rocket} <span>Crear Token</span></button>
             </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
-            ${filtered.length === 0 ? `<div class="col-span-full py-20 flex flex-col items-center justify-center text-slate-500 border border-slate-800 rounded-3xl border-dashed bg-slate-900/30"><div class="text-5xl mb-4 opacity-30">${Icons.Chart}</div><div class="font-bold text-lg text-white">No hay tokens aquí.</div></div>` : 
-            filtered.map(token => {
-                const progress = Math.min(100, ((token.solPool - VIRTUAL_SOL_RESERVE) / BONDING_CURVE_LIMIT) * 100);
-                const isComplete = progress >= 100;
-                const imgHTML = token.image && token.image.startsWith('http') 
-                  ? `<img src="${token.image}" class="w-12 h-12 rounded-lg object-cover border border-slate-700" onerror="this.outerHTML='<div class=\\'w-12 h-12 bg-slate-800 rounded-lg flex items-center justify-center border border-slate-700\\'>🪙</div>'"/>` 
-                  : `<div class="w-12 h-12 bg-slate-800 rounded-lg flex items-center justify-center border border-slate-700 text-2xl">🪙</div>`;
-
-                return `
-                <div onclick="STATE.selectedTokenId='${token.id}'; STATE.tradeAmount=''; updateUI();" class="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-5 cursor-pointer transition-all hover:-translate-y-1 relative overflow-hidden group shadow-lg flex flex-col justify-between min-h-[170px]">
-                    <div class="absolute bottom-0 left-0 h-1.5 bg-slate-950 w-full"><div class="h-full ${isComplete ? 'bg-purple-500' : 'bg-gradient-to-r from-emerald-600 to-emerald-400'} transition-all" style="width: ${progress}%"></div></div>
-                    
-                    <div class="flex justify-between items-start mb-4 z-10 gap-3">
-                        <div class="shrink-0">${imgHTML}</div>
-                        <div class="flex-1 min-w-0 pr-2">
-                            <h3 class="font-black text-white text-base truncate leading-tight mb-1.5">${token.name}</h3>
-                            <span class="text-[10px] font-mono bg-slate-950 text-slate-400 px-2 py-0.5 rounded border border-slate-800 font-bold">$${token.ticker}</span>
-                        </div>
-                        <div class="text-right shrink-0">
-                            <div class="text-sm font-mono font-bold ${isComplete ? 'text-purple-400 animate-pulse' : 'text-emerald-400'}">${getPrice(token.solPool, token.tokenPool).toFixed(8)}</div>
-                            <div class="text-[10px] text-slate-500 font-bold uppercase mt-1">Vol: ${formatSOL(token.solPool - VIRTUAL_SOL_RESERVE)}</div>
-                        </div>
-                    </div>
-                    <div class="h-16 w-full opacity-70 mt-auto">${generateChartSVG(token, 300, 64, true)}</div>
-                </div>`;
-            }).join('')}
+        <div id="market-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
+            <!-- Dynamic Grid -->
         </div>
     </div>`;
 }
 
-function RenderLaunch() {
+function UpdateMarketDynamic() {
+    const grid = document.getElementById('market-grid');
+    if(!grid) return;
+    
+    const filtered = Object.values(STATE.tokens)
+        .sort((a,b) => b.solPool - a.solPool)
+        .filter(t => t.name.toLowerCase().includes(STATE.searchQuery.toLowerCase()) || t.ticker.toLowerCase().includes(STATE.searchQuery.toLowerCase()))
+        .filter(t => {
+            if(STATE.marketFilter === 'human') return !STATE.players[t.creatorId]?.isBot;
+            if(STATE.marketFilter === 'bot') return STATE.players[t.creatorId]?.isBot;
+            return true;
+        });
+
+    if(filtered.length === 0) {
+        grid.innerHTML = `<div class="col-span-full py-20 flex flex-col items-center justify-center text-slate-500 border border-slate-800 rounded-3xl border-dashed bg-slate-900/30"><div class="text-5xl mb-4 opacity-30">${Icons.Chart}</div><div class="font-bold text-lg text-white">No hay tokens aquí.</div></div>`;
+        return;
+    }
+
+    grid.innerHTML = filtered.map(token => {
+        const progress = Math.min(100, ((token.solPool - VIRTUAL_SOL_RESERVE) / BONDING_CURVE_LIMIT) * 100);
+        const isComplete = progress >= 100;
+        const imgHTML = token.image && token.image.startsWith('data:image') || (token.image && token.image.startsWith('http')) 
+          ? `<img src="${token.image}" class="w-12 h-12 rounded-lg object-cover border border-slate-700" onerror="this.outerHTML='<div class=\\'w-12 h-12 bg-slate-800 rounded-lg flex items-center justify-center border border-slate-700\\'>🪙</div>'"/>` 
+          : `<div class="w-12 h-12 bg-slate-800 rounded-lg flex items-center justify-center border border-slate-700 text-2xl">🪙</div>`;
+
+        return `
+        <div onclick="selectToken('${token.id}');" class="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-5 cursor-pointer transition-all hover:-translate-y-1 relative overflow-hidden group shadow-lg flex flex-col justify-between min-h-[170px]">
+            <div class="absolute bottom-0 left-0 h-1.5 bg-slate-950 w-full"><div class="h-full ${isComplete ? 'bg-purple-500' : 'bg-gradient-to-r from-emerald-600 to-emerald-400'} transition-all" style="width: ${progress}%"></div></div>
+            
+            <div class="flex justify-between items-start mb-4 z-10 gap-3">
+                <div class="shrink-0">${imgHTML}</div>
+                <div class="flex-1 min-w-0 pr-2">
+                    <h3 class="font-black text-white text-base truncate leading-tight mb-1.5">${token.name}</h3>
+                    <span class="text-[10px] font-mono bg-slate-950 text-slate-400 px-2 py-0.5 rounded border border-slate-800 font-bold">$${token.ticker}</span>
+                </div>
+                <div class="text-right shrink-0">
+                    <div class="text-sm font-mono font-bold ${isComplete ? 'text-purple-400 animate-pulse' : 'text-emerald-400'}">${getPrice(token.solPool, token.tokenPool).toFixed(8)}</div>
+                    <div class="text-[10px] text-slate-500 font-bold uppercase mt-1">Vol: ${formatSOL(token.solPool - VIRTUAL_SOL_RESERVE)}</div>
+                </div>
+            </div>
+            <div class="h-16 w-full opacity-70 mt-auto">${generateChartSVG(token, 300, 64, true)}</div>
+        </div>`;
+    }).join('');
+}
+
+// --- TOKEN DETAIL ---
+function RenderTokenDetailSkeleton() {
+    const token = STATE.tokens[STATE.selectedTokenId];
+    if (!token) { STATE.selectedTokenId = null; STATE.activeTab='market'; return RenderMarketSkeleton(); }
     const me = STATE.players[STATE.myProfile.id];
-    const maxDevBuy = Math.max(0, me.solBalance - 1);
-    return `
-    <div class="max-w-lg mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl animate-fade-in mt-4 md:mt-10">
-        <h2 class="text-2xl font-black text-white mb-2 flex items-center gap-3">${Icons.Rocket} Desplegar Token</h2>
-        <p class="text-xs text-slate-500 mb-8 font-bold uppercase tracking-wider leading-relaxed">El token inicia con curva Pump.fun (20 SOL virtuales). Ganas reputación por volumen.</p>
-        <form id="launch-form" onsubmit="event.preventDefault(); const n=document.getElementById('l-name').value; const t=document.getElementById('l-ticker').value; const i=document.getElementById('l-image').value; const d=parseFloat(document.getElementById('l-devbuy').value)||0; if(n&&t){dispatchAction('ACTION_LAUNCH', {name:n, ticker:t, image:i, devBuy:d}); STATE.activeTab='market'; updateUI();}" class="space-y-5">
-            <div>
-                <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Nombre del Proyecto</label>
-                <input id="l-name" placeholder="Ej: Solana Doge" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3.5 text-white focus:border-emerald-500 outline-none font-bold transition-colors" />
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Ticker</label>
-                    <input id="l-ticker" maxlength="6" placeholder="Ej: SDOGE" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3.5 text-white focus:border-emerald-500 outline-none uppercase font-black tracking-widest transition-colors" />
-                </div>
-                <div>
-                    <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Icono URL (Opcional)</label>
-                    <input id="l-image" placeholder="https://..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3.5 text-slate-300 text-sm focus:border-emerald-500 outline-none font-mono transition-colors" />
-                </div>
-            </div>
-            <div class="pt-2">
-                <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block flex justify-between"><span>Snipe del Dev (Opcional)</span> <span class="text-emerald-400">Max: ${formatSOL(maxDevBuy)}</span></label>
-                <input id="l-devbuy" type="number" step="0.01" min="0" max="${maxDevBuy}" placeholder="Cantidad en SOL" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3.5 text-emerald-400 font-mono text-lg focus:border-emerald-500 outline-none transition-colors" />
-                <span class="text-[10px] text-slate-500 mt-2 block font-bold leading-relaxed">Compras automáticamente la primera vela en la misma transacción del bloque.</span>
-            </div>
-            <div class="bg-slate-950 p-5 rounded-xl border border-slate-800 text-xs md:text-sm space-y-2 mt-4 shadow-inner">
-                <div class="flex justify-between font-bold text-slate-400 uppercase tracking-wider"><span>Costo de Red (Fijo):</span><span class="font-mono text-white">1.00 SOL</span></div>
-                <div class="flex justify-between font-black text-emerald-400 pt-3 border-t border-slate-800/50 mt-3 uppercase tracking-wider"><span>Total Mínimo a Pagar:</span><span class="font-mono">1.00 SOL</span></div>
-            </div>
-            <div class="flex gap-3 pt-4">
-                <button type="submit" class="flex-1 bg-emerald-500 text-slate-950 font-black py-4 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:bg-emerald-400 transition-all text-base tracking-widest uppercase">Lanzar Token</button>
-                <button type="button" onclick="STATE.activeTab='market'; updateUI();" class="px-6 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-700 transition-colors uppercase tracking-widest text-xs">Cancelar</button>
-            </div>
-        </form>
-    </div>`;
-}
+    
+    const imgHTML = token.image && token.image.startsWith('data:image') || (token.image && token.image.startsWith('http')) 
+      ? `<img src="${token.image}" class="w-16 h-16 md:w-20 md:h-20 rounded-2xl object-cover border-2 border-slate-700 shadow-lg" onerror="this.outerHTML='<div class=\\'w-16 h-16 md:w-20 md:h-20 bg-slate-800 rounded-2xl flex items-center justify-center border-2 border-slate-700 text-3xl shadow-lg\\'>🪙</div>'"/>` 
+      : `<div class="w-16 h-16 md:w-20 md:h-20 bg-slate-800 rounded-2xl flex items-center justify-center border-2 border-slate-700 text-3xl shadow-lg">🪙</div>`;
 
-function RenderCharity() {
     return `
-    <div class="max-w-4xl mx-auto space-y-6 animate-fade-in text-center pt-10">
-        <div class="text-6xl mb-4 animate-pulse">💖</div>
-        <h1 class="text-4xl font-black text-white">Beneficencia Degen</h1>
-        <p class="text-slate-400 text-sm max-w-lg mx-auto">Dona tus ganancias en SOL a causas benéficas reales. Pierdes liquidez, pero ganas Reputación masivamente entre los degens. El karma existe.</p>
-        <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl max-w-sm mx-auto shadow-xl mt-8">
-            <input id="charity-amount" type="number" placeholder="Monto en SOL" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-4 text-pink-500 font-mono text-2xl text-center mb-4 focus:border-pink-500 outline-none transition-colors"/>
-            <button onclick="const amt = parseFloat(document.getElementById('charity-amount').value); if(amt>0) { dispatchAction('ACTION_CHARITY', { amount: amt }); STATE.activeTab='market'; updateUI(); addToast('Donación enviada!', '💖'); }" class="w-full bg-pink-600 hover:bg-pink-500 text-white font-black py-4 rounded-xl shadow-[0_0_20px_rgba(219,39,119,0.4)] transition-all uppercase tracking-widest">Donar y Subir Reputación</button>
-        </div>
-    </div>`;
-}
-
-function RenderStreams() {
-    const streamers = Object.values(STATE.players).filter(p => p.isBot && p.reputation > 5).sort(()=>0.5-Math.random()).slice(0,4);
-    return `
-    <div class="max-w-6xl mx-auto space-y-6 animate-fade-in pb-10">
-        <h2 class="text-3xl font-black text-white mb-2">Streams en Vivo</h2>
-        <p class="text-slate-500 text-sm mb-6">Apoya a tus traders favoritos con donaciones (Text To Speech simulado).</p>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            ${streamers.length === 0 ? '<div class="col-span-full text-slate-500 italic py-10">Nadie está streameando ahora mismo.</div>' : ''}
-            ${streamers.map(s => `
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg group flex flex-col">
-                <div class="h-48 bg-slate-950 relative flex items-center justify-center border-b border-slate-800">
-                    <div class="absolute top-3 left-3 bg-red-500 text-white text-[10px] font-black px-2 py-1 rounded uppercase tracking-widest animate-pulse">EN VIVO</div>
-                    <div class="absolute top-3 right-3 bg-slate-900/80 text-white text-[10px] font-mono px-2 py-1 rounded border border-slate-700">👁️ ${Math.floor(Math.random()*5000 + 100)} viewers</div>
-                    <div class="text-7xl group-hover:scale-110 transition-transform">${s.avatar}</div>
-                </div>
-                <div class="p-5 flex justify-between items-center bg-slate-900">
-                    <div>
-                        <div class="font-black text-white text-lg flex items-center gap-2">${s.name} <span class="text-xs bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded font-mono uppercase tracking-widest">Bot</span></div>
-                        <div class="text-xs text-slate-500 mt-1">Haciendo trading e ignorando rugs.</div>
+    <div class="space-y-4 max-w-7xl mx-auto h-full flex flex-col animate-fade-in">
+        <button onclick="switchTab('market');" class="text-slate-400 hover:text-white flex items-center gap-2 text-xs font-bold uppercase tracking-widest w-fit bg-slate-900 px-5 py-2.5 rounded-xl border border-slate-800 transition-colors shadow-sm hover:border-slate-600">← Volver al Mercado</button>
+        
+        <div class="flex flex-col lg:flex-row gap-5 h-full pb-10 md:pb-0">
+            <div class="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 flex flex-col min-h-[500px] shadow-xl">
+                <div class="flex justify-between items-start md:items-end mb-6 flex-wrap gap-4">
+                    <div class="flex gap-4 items-center w-full md:w-auto">
+                        <div class="shrink-0">${imgHTML}</div>
+                        <div>
+                            <h1 class="text-2xl md:text-4xl font-black text-white tracking-tight mb-2">${token.name} <span class="text-emerald-400 text-lg md:text-xl bg-emerald-500/10 px-3 py-1 rounded-xl ml-1 font-mono border border-emerald-500/20">$${token.ticker}</span></h1>
+                            <div class="flex flex-wrap items-center gap-3 text-xs md:text-sm font-bold text-slate-400">
+                                <span class="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors" onclick="STATE.viewingProfileId='${token.creatorId}'; STATE.giftTargetId=null; renderModal();">
+                                    Dev: <span class="underline">${token.creatorName}</span>
+                                </span>
+                                <div class="w-1 h-1 bg-slate-700 rounded-full"></div>
+                                <span class="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 shadow-inner" title="Reputación del Creador">
+                                    <span class="text-slate-600">${Icons.Shield}</span> <span id="tok-dev-rep">...</span>
+                                </span>
+                                ${token.creatorId === me.id ? `<span class="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2.5 py-1 rounded-lg uppercase tracking-wider text-[10px]">Es tuyo</span>` : ''}
+                            </div>
+                        </div>
                     </div>
-                    <button onclick="dispatchAction('ACTION_CHAT', {msg: 'Enviando TTS a ${s.name}: LFG bro!'}); addToast('TTS Donado a ${s.name}','💸');" class="bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/40 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors uppercase tracking-wider">Donar TTS</button>
+                    <div class="text-right bg-slate-950 p-4 md:p-5 rounded-2xl border border-slate-800 shadow-inner w-full md:w-auto flex flex-row md:flex-col justify-between items-center md:items-end">
+                        <div class="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Precio actual</div>
+                        <div id="tok-price" class="...">...</div>
+                        <div class="text-[10px] md:text-sm font-bold text-slate-400 mt-1 md:mt-2">MCap: <span id="tok-mcap" class="text-white">...</span></div>
+                    </div>
                 </div>
-            </div>`).join('')}
+
+                <div class="mb-5 bg-[#020617] p-4 rounded-2xl border border-slate-800 shadow-inner">
+                    <div class="flex justify-between text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2.5">
+                        <span id="tok-prog-lbl">Curva de Liquidez</span>
+                        <span id="tok-prog-text" class="text-emerald-400">...</span>
+                    </div>
+                    <div class="h-4 w-full bg-slate-900 rounded-full border border-slate-700 overflow-hidden shadow-inner">
+                        <div id="tok-prog-bar" class="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="w-full flex-1 bg-[#020617] border border-slate-800 rounded-2xl overflow-hidden relative shadow-inner" id="tok-chart">
+                    <!-- Chart Dynamic -->
+                </div>
+            </div>
+
+            <!-- PANEL DERECHO (Trade) -->
+            <div class="w-full lg:w-80 xl:w-96 shrink-0 flex flex-col gap-5">
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl">
+                    <div class="flex bg-slate-950 border border-slate-800 rounded-xl p-1.5 mb-6 shadow-inner">
+                        <button onclick="setTradeType('buy');" class="flex-1 py-2.5 font-black text-sm rounded-lg transition-all uppercase tracking-wider ${STATE.tradeType==='buy'?'bg-emerald-500 text-slate-950 shadow-md':'text-slate-500 hover:text-white'}">Comprar</button>
+                        <button onclick="setTradeType('sell');" class="flex-1 py-2.5 font-black text-sm rounded-lg transition-all uppercase tracking-wider ${STATE.tradeType==='sell'?'bg-red-500 text-slate-950 shadow-md':'text-slate-500 hover:text-white'}">Vender</button>
+                    </div>
+
+                    <div class="flex justify-between text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
+                        <span>Pagas en ${STATE.tradeType==='buy'?'SOL':'$'+token.ticker}</span>
+                        <span class="text-emerald-400">Bal: <span id="tok-bal-base">...</span></span>
+                    </div>
+                    
+                    <div class="relative mb-3">
+                        <input id="t-amount" type="number" value="${STATE.tradeAmount}" oninput="STATE.tradeAmount = this.value; UpdateTokenDetailDynamic();" placeholder="0.0" class="w-full bg-[#020617] border border-slate-800 rounded-xl px-4 py-4 text-white font-mono text-2xl focus:outline-none focus:border-emerald-500 transition-colors shadow-inner" />
+                    </div>
+                    
+                    <div class="flex gap-2 mb-6" id="tok-pct-btns">
+                        <!-- Pct buttons -->
+                    </div>
+
+                    <div class="bg-slate-950 border border-slate-800 p-4 md:p-5 rounded-2xl mb-6 space-y-3 text-xs md:text-sm shadow-inner">
+                        <div class="flex justify-between text-slate-400 font-bold uppercase tracking-wider text-[10px] md:text-xs"><span>Recibes est (Fee 5%):</span> <span id="tok-est-rec" class="font-mono text-white text-sm md:text-base">...</span></div>
+                        <div class="h-px bg-slate-800 w-full"></div>
+                        <div class="flex justify-between text-slate-500 font-bold uppercase tracking-wider text-[10px] md:text-xs"><span>Liquidez Real:</span> <span id="tok-real-liq" class="font-mono">...</span></div>
+                    </div>
+
+                    <button onclick="const a=parseFloat(document.getElementById('t-amount').value); if(a>0){ dispatchAction('ACTION_TRADE', {tokenId:'${token.id}', isBuy:${STATE.tradeType==='buy'}, amount:a}); document.getElementById('t-amount').value=''; STATE.tradeAmount=''; requestUIRender(); }" class="w-full py-4 rounded-xl font-black text-lg uppercase tracking-widest transition-all shadow-lg ${STATE.tradeType==='buy' ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-emerald-500/20' : 'bg-red-500 text-slate-950 hover:bg-red-400 shadow-red-500/20'}">
+                        ${STATE.tradeType==='buy' ? 'Ape In' : 'Dump'}
+                    </button>
+
+                    <div class="mt-5 flex flex-col sm:flex-row gap-3" id="tok-tools">
+                        <!-- Tools -->
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden flex-1 flex flex-col min-h-[250px] shadow-xl">
+                    <div class="p-4 border-b border-slate-800 bg-slate-950 text-[10px] md:text-xs font-black text-slate-500 uppercase flex justify-between tracking-widest">
+                        <span class="flex items-center gap-2">${Icons.PieChart} Holder</span><span>% Supply</span>
+                    </div>
+                    <div id="tok-holders" class="overflow-y-auto p-2 space-y-1.5 flex-1">
+                        <!-- Holders Dynamic -->
+                    </div>
+                </div>
+            </div>
         </div>
     </div>`;
 }
 
-function RenderLeaderboard() {
-    let filtered = Object.values(STATE.players);
-    if(STATE.lbFilter === 'bots') filtered = filtered.filter(p => p.isBot);
-    else if(STATE.lbFilter === 'humans') filtered = filtered.filter(p => !p.isBot);
+function UpdateTokenDetailDynamic() {
+    const token = STATE.tokens[STATE.selectedTokenId];
+    if (!token) return;
+    const me = STATE.players[STATE.myProfile.id];
+    const currentPrice = getPrice(token.solPool, token.tokenPool);
+    const mcap = currentPrice * token.initialSupply * 150; 
+    const balTokens = me.portfolio[token.id] || 0;
+    
+    const numAmt = parseFloat(document.getElementById('t-amount')?.value || STATE.tradeAmount) || 0;
+    let estimated = 0;
+    if(STATE.tradeType === 'buy' && numAmt > 0) estimated = calcTokensOut(numAmt, token.solPool, token.tokenPool);
+    if(STATE.tradeType === 'sell' && numAmt > 0) estimated = calcSolOut(numAmt, token.solPool, token.tokenPool);
 
-    if(STATE.lbSort === 'balance') filtered.sort((a,b) => b.solBalance - a.solBalance);
-    else if(STATE.lbSort === 'reputation') filtered.sort((a,b) => b.reputation - a.reputation);
+    const progress = Math.min(100, ((token.solPool - VIRTUAL_SOL_RESERVE) / BONDING_CURVE_LIMIT) * 100);
+    const isComplete = progress >= 100;
 
-    filtered = filtered.slice(0, 100);
+    const dRep = document.getElementById('tok-dev-rep'); if(dRep) { dRep.innerText = STATE.players[token.creatorId]?.reputation || 1; dRep.className = (STATE.players[token.creatorId]?.reputation || 1) > 70 ? 'text-emerald-400' : 'text-slate-300'; }
+    const prEl = document.getElementById('tok-price'); if(prEl) { prEl.innerHTML = currentPrice.toFixed(8) + ' <span class="text-sm text-slate-500">SOL</span>'; prEl.className = `text-xl md:text-3xl font-mono font-black ${isComplete ? 'text-purple-400' : 'text-emerald-400'}`; }
+    const mcEl = document.getElementById('tok-mcap'); if(mcEl) mcEl.innerText = formatSOL(mcap / 150);
+    
+    const pLbl = document.getElementById('tok-prog-lbl'); if(pLbl) pLbl.className = isComplete ? 'text-purple-400 animate-pulse' : '';
+    const pTxt = document.getElementById('tok-prog-text'); if(pTxt) pTxt.innerText = progress.toFixed(1) + '%';
+    const pBar = document.getElementById('tok-prog-bar'); if(pBar) { pBar.style.width = progress + '%'; pBar.className = `h-full transition-all duration-500 ${isComplete ? 'bg-gradient-to-r from-purple-600 to-purple-400' : 'bg-gradient-to-r from-emerald-600 to-emerald-400'}`; }
+    
+    const chEl = document.getElementById('tok-chart'); if(chEl) chEl.innerHTML = generateChartSVG(token, 800, 400, false);
+    
+    const tBal = document.getElementById('tok-bal-base'); if(tBal) tBal.innerText = STATE.tradeType==='buy'?formatSOL(me.solBalance):formatToken(balTokens);
+    const eRec = document.getElementById('tok-est-rec'); if(eRec) eRec.innerText = STATE.tradeType==='buy'?formatToken(estimated):formatSOL(estimated);
+    const rLiq = document.getElementById('tok-real-liq'); if(rLiq) rLiq.innerText = formatSOL(token.solPool - VIRTUAL_SOL_RESERVE);
 
+    const pctBtns = document.getElementById('tok-pct-btns');
+    if(pctBtns) {
+        pctBtns.innerHTML = [1, 10, 50, 100].map(pct => `
+            <button onclick="const am = STATE.tradeType === 'buy' ? (Math.max(0, ${me.solBalance} - 0.01) * ${pct/100}).toFixed(4) : (${balTokens} * ${pct/100}).toFixed(0); STATE.tradeAmount = am; document.getElementById('t-amount').value = am; UpdateTokenDetailDynamic();" class="flex-1 bg-slate-950 border border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-500/10 text-slate-400 hover:text-emerald-400 text-[10px] md:text-xs py-2.5 rounded-lg font-bold font-mono transition-all shadow-inner">
+                ${pct}%
+            </button>
+        `).join('');
+    }
+
+    const tools = document.getElementById('tok-tools');
+    if(tools) {
+        tools.innerHTML = `
+            <button onclick="const b = prompt('¿Quemar tokens? Se restarán de tu inventario y del Supply Total para subir el precio base.'); if(b && Number(b)>0){ dispatchAction('ACTION_BURN', { tokenId: '${token.id}', amount: Number(b) }); }" ${balTokens <= 0 ? 'disabled' : ''} class="flex-1 bg-orange-500/10 text-orange-500 border border-orange-500/30 hover:bg-orange-500/20 rounded-xl py-3 text-[10px] font-black flex justify-center items-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed uppercase tracking-widest">
+                ${Icons.Flame} Quemar
+            </button>
+            ${token.creatorId === me.id ? `
+            <button onclick="if(window.confirm('RUG PULL: ¿Vender 100% de tu inventario de golpe? Perderás reputación drásticamente.')){ dispatchAction('ACTION_TRADE', { tokenId: '${token.id}', isBuy: false, amount: ${balTokens} }); }" class="flex-1 bg-red-950/40 text-red-500 border border-red-900/50 hover:bg-red-900/60 rounded-xl py-3 text-[10px] font-black flex justify-center items-center gap-2 transition-all uppercase tracking-widest">
+                ${Icons.Alert} Rug Pull
+            </button>` : ''}
+        `;
+    }
+
+    const holders = Object.values(STATE.players).filter(p => p.portfolio[token.id] > 0)
+        .map(p => ({ ...p, tokenAmount: p.portfolio[token.id], pct: (p.portfolio[token.id]/token.initialSupply)*100 }))
+        .sort((a,b) => b.tokenAmount - a.tokenAmount).slice(0, 50);
+        
+    const hList = document.getElementById('tok-holders');
+    if(hList) {
+        if(holders.length === 0) hList.innerHTML = `<div class="text-center text-slate-500 py-8 text-sm font-bold">Nadie tiene este token.</div>`;
+        else hList.innerHTML = holders.map((h, i) => `
+            <div class="cursor-pointer flex justify-between items-center p-3 rounded-xl transition-colors ${h.id===me.id ? 'bg-emerald-900/20 border border-emerald-900/30' : 'hover:bg-slate-800/50 border border-transparent'}" onclick="STATE.viewingProfileId='${h.id}'; STATE.giftTargetId=null; renderModal();">
+                <div class="flex items-center gap-3">
+                    <span class="text-slate-600 text-[10px] font-mono font-black w-4 text-right">${i+1}.</span>
+                    <div class="relative"><span class="text-2xl">${h.avatar}</span>${h.isSpeaking ? `<div class="absolute inset-0 speaking-ring border-emerald-500"></div>` : ''}</div>
+                    <div class="flex flex-col">
+                        <span class="text-xs font-bold text-slate-200">${h.name}</span>
+                        ${h.isBot ? `<span class="text-[9px] text-purple-400 font-mono font-bold uppercase mt-0.5 tracking-wider">BOT</span>` : ''}
+                    </div>
+                </div>
+                <div class="text-right">
+                    <div class="text-xs font-mono font-bold text-emerald-400">${h.pct.toFixed(2)}%</div>
+                </div>
+            </div>`).join('');
+    }
+}
+
+// --- LEADERBOARD ---
+function RenderLeaderboardSkeleton() {
     return `
     <div class="max-w-6xl mx-auto space-y-6 animate-fade-in">
         <div class="flex justify-between items-end flex-wrap gap-4">
@@ -1213,60 +1378,108 @@ function RenderLeaderboard() {
                 ${STATE.roomConfig.isHost ? `<button onclick="dispatchAction('ACTION_ADD_BOT')" class="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 text-xs px-4 py-2 rounded-lg font-black transition-colors">+ Add Bot</button>` : ''}
             </div>
         </div>
-        
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-            <table class="w-full text-left hidden md:table">
-                <thead class="bg-slate-950 text-xs text-slate-500 uppercase tracking-widest border-b border-slate-800 font-black">
-                    <tr><th class="px-6 py-4">Rank</th><th class="px-6 py-4">Usuario</th><th class="px-6 py-4 text-center">Tipo</th><th class="px-6 py-4 text-center">Rep</th><th class="px-6 py-4 text-center">Inventario</th><th class="px-6 py-4 text-right">Balance</th><th class="px-6 py-4 text-center">Regalar</th></tr>
-                </thead>
-                <tbody class="divide-y divide-slate-800/50 text-sm">
-                    ${filtered.map((p, i) => `
-                    <tr class="hover:bg-slate-800/40 transition-colors ${p.id===STATE.myProfile.id ? 'bg-emerald-900/10' : ''}">
-                        <td class="px-6 py-4 text-slate-500 font-mono font-bold cursor-pointer" onclick="STATE.viewingProfileId='${p.id}'; STATE.giftTargetId=null; renderModal();">#${i+1}</td>
-                        <td class="px-6 py-4 font-bold text-white flex items-center gap-3 cursor-pointer" onclick="STATE.viewingProfileId='${p.id}'; STATE.giftTargetId=null; renderModal();">
-                            <div class="relative">
-                                <span class="text-3xl">${p.avatar}</span>
-                                ${p.isSpeaking ? `<div class="absolute inset-0 speaking-ring border-emerald-500"></div>` : ''}
-                            </div>
-                            <span class="hover:underline">${p.name}</span> ${p.id===STATE.myProfile.id ? '<span class="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded uppercase tracking-wider">(Tú)</span>' : ''}
-                        </td>
-                        <td class="px-6 py-4 text-center">${p.isBot ? `<span class="text-[10px] font-black tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2.5 py-1 rounded-md uppercase">BOT: ${p.strategy}</span>` : `<span class="text-[10px] font-black tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-md uppercase">HUMANO</span>`}</td>
-                        <td class="px-6 py-4 text-center"><div class="flex items-center justify-center gap-1.5 font-black text-base" title="Reputación"><span class="text-slate-600">${Icons.Shield}</span> <span class="${p.reputation > 70 ? 'text-emerald-400' : p.reputation < 30 ? 'text-red-400' : 'text-yellow-400'}">${p.reputation}</span></div></td>
-                        <td class="px-6 py-4 text-center text-xl tracking-widest">${p.luxuries?.slice(0,3).join('') || '-'}</td>
-                        <td class="px-6 py-4 font-mono font-bold text-emerald-400 text-right text-base">${formatSOL(p.solBalance)}</td>
-                        <td class="px-6 py-4 text-center">
-                            ${p.id !== STATE.myProfile.id ? `<button onclick="STATE.giftTargetId='${p.id}'; STATE.viewingProfileId=null; renderGiftModal();" class="text-slate-500 hover:text-emerald-400 bg-slate-950 p-2 rounded-lg border border-slate-800 hover:border-emerald-500/50 transition-all" title="Regalar SOL">${Icons.Gift}</button>` : '-'}
-                        </td>
-                    </tr>`).join('')}
-                </tbody>
-            </table>
-            
-            <div class="md:hidden divide-y divide-slate-800/50">
-                ${filtered.map((p, i) => `
-                <div class="p-5 flex flex-col gap-3 hover:bg-slate-800/40 transition-colors ${p.id===STATE.myProfile.id ? 'bg-emerald-900/10' : ''}">
-                    <div class="flex justify-between items-center">
-                        <div class="flex items-center gap-3 font-bold text-white cursor-pointer" onclick="STATE.viewingProfileId='${p.id}'; STATE.giftTargetId=null; renderModal();">
-                            <span class="text-slate-500 font-mono text-xs">#${i+1}</span>
-                            <div class="relative"><span class="text-3xl">${p.avatar}</span>${p.isSpeaking ? `<div class="absolute inset-0 speaking-ring border-emerald-500"></div>` : ''}</div>
-                            <span class="text-base">${p.name}</span>
-                        </div>
-                        <div class="font-mono font-bold text-emerald-400 text-base">${formatSOL(p.solBalance)}</div>
-                    </div>
-                    <div class="flex justify-between items-center text-xs mt-1">
-                        <div class="flex items-center gap-3 cursor-pointer" onclick="STATE.viewingProfileId='${p.id}'; STATE.giftTargetId=null; renderModal();">
-                            ${p.isBot ? `<span class="text-[10px] font-black text-purple-400 bg-purple-500/10 px-2 py-1 rounded uppercase tracking-wider">BOT: ${p.strategy}</span>` : `<span class="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded uppercase tracking-wider">HUMANO</span>`}
-                            <span class="flex items-center gap-1.5 font-bold text-slate-300"><span class="text-slate-600">${Icons.Shield}</span> <span class="${p.reputation > 70 ? 'text-emerald-400' : p.reputation < 30 ? 'text-red-400' : 'text-yellow-400'}">${p.reputation}</span></span>
-                        </div>
-                        <div class="flex items-center gap-3">
-                            <span class="text-xl tracking-widest">${p.luxuries?.slice(0,2).join('') || ''}</span>
-                            ${p.id !== STATE.myProfile.id ? `<button onclick="STATE.giftTargetId='${p.id}'; STATE.viewingProfileId=null; renderGiftModal();" class="bg-slate-950 border border-slate-800 p-2.5 rounded-xl hover:border-emerald-500/50 text-slate-400 hover:text-emerald-400 transition-all shadow-inner">${Icons.Gift}</button>` : ''}
-                        </div>
-                    </div>
-                </div>`).join('')}
-            </div>
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl" id="lb-grid">
+            <!-- Dynamic Grid -->
         </div>
     </div>`;
 }
+
+function UpdateLeaderboardDynamic() {
+    const grid = document.getElementById('lb-grid');
+    if(!grid) return;
+    
+    let filtered = Object.values(STATE.players);
+    if(STATE.lbFilter === 'bots') filtered = filtered.filter(p => p.isBot);
+    else if(STATE.lbFilter === 'humans') filtered = filtered.filter(p => !p.isBot);
+
+    if(STATE.lbSort === 'balance') filtered.sort((a,b) => b.solBalance - a.solBalance);
+    else if(STATE.lbSort === 'reputation') filtered.sort((a,b) => b.reputation - a.reputation);
+
+    filtered = filtered.slice(0, 100);
+
+    grid.innerHTML = `
+        <table class="w-full text-left hidden md:table">
+            <thead class="bg-slate-950 text-xs text-slate-500 uppercase tracking-widest border-b border-slate-800 font-black">
+                <tr><th class="px-6 py-4">Rank</th><th class="px-6 py-4">Usuario</th><th class="px-6 py-4 text-center">Tipo</th><th class="px-6 py-4 text-center">Rep</th><th class="px-6 py-4 text-center">Inventario</th><th class="px-6 py-4 text-right">Balance</th><th class="px-6 py-4 text-center">Regalar</th></tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/50 text-sm">
+                ${filtered.map((p, i) => `
+                <tr class="hover:bg-slate-800/40 transition-colors ${p.id===STATE.myProfile.id ? 'bg-emerald-900/10' : ''}">
+                    <td class="px-6 py-4 text-slate-500 font-mono font-bold cursor-pointer" onclick="STATE.viewingProfileId='${p.id}'; STATE.giftTargetId=null; renderModal();">#${i+1}</td>
+                    <td class="px-6 py-4 font-bold text-white flex items-center gap-3 cursor-pointer" onclick="STATE.viewingProfileId='${p.id}'; STATE.giftTargetId=null; renderModal();">
+                        <div class="relative"><span class="text-3xl">${p.avatar}</span>${p.isSpeaking ? `<div class="absolute inset-0 speaking-ring border-emerald-500"></div>` : ''}</div>
+                        <span class="hover:underline">${p.name}</span> ${p.id===STATE.myProfile.id ? '<span class="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded uppercase tracking-wider">(Tú)</span>' : ''}
+                    </td>
+                    <td class="px-6 py-4 text-center">${p.isBot ? `<span class="text-[10px] font-black tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2.5 py-1 rounded-md uppercase">BOT: ${p.strategy}</span>` : `<span class="text-[10px] font-black tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-md uppercase">HUMANO</span>`}</td>
+                    <td class="px-6 py-4 text-center"><div class="flex items-center justify-center gap-1.5 font-black text-base" title="Reputación"><span class="text-slate-600">${Icons.Shield}</span> <span class="${p.reputation > 70 ? 'text-emerald-400' : p.reputation < 30 ? 'text-red-400' : 'text-yellow-400'}">${p.reputation}</span></div></td>
+                    <td class="px-6 py-4 text-center text-xl tracking-widest">${p.luxuries?.slice(0,3).join('') || '-'}</td>
+                    <td class="px-6 py-4 font-mono font-bold text-emerald-400 text-right text-base">${formatSOL(p.solBalance)}</td>
+                    <td class="px-6 py-4 text-center">
+                        ${p.id !== STATE.myProfile.id ? `<button onclick="STATE.giftTargetId='${p.id}'; STATE.viewingProfileId=null; renderGiftModal();" class="text-slate-500 hover:text-emerald-400 bg-slate-950 p-2 rounded-lg border border-slate-800 hover:border-emerald-500/50 transition-all" title="Regalar SOL">${Icons.Gift}</button>` : '-'}
+                    </td>
+                </tr>`).join('')}
+            </tbody>
+        </table>
+        <div class="md:hidden divide-y divide-slate-800/50">
+            ${filtered.map((p, i) => `
+            <div class="p-5 flex flex-col gap-3 hover:bg-slate-800/40 transition-colors ${p.id===STATE.myProfile.id ? 'bg-emerald-900/10' : ''}">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center gap-3 font-bold text-white cursor-pointer" onclick="STATE.viewingProfileId='${p.id}'; STATE.giftTargetId=null; renderModal();">
+                        <span class="text-slate-500 font-mono text-xs">#${i+1}</span>
+                        <div class="relative"><span class="text-3xl">${p.avatar}</span>${p.isSpeaking ? `<div class="absolute inset-0 speaking-ring border-emerald-500"></div>` : ''}</div>
+                        <span class="text-base">${p.name}</span>
+                    </div>
+                    <div class="font-mono font-bold text-emerald-400 text-base">${formatSOL(p.solBalance)}</div>
+                </div>
+                <div class="flex justify-between items-center text-xs mt-1">
+                    <div class="flex items-center gap-3 cursor-pointer" onclick="STATE.viewingProfileId='${p.id}'; STATE.giftTargetId=null; renderModal();">
+                        ${p.isBot ? `<span class="text-[10px] font-black text-purple-400 bg-purple-500/10 px-2 py-1 rounded uppercase tracking-wider">BOT: ${p.strategy}</span>` : `<span class="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded uppercase tracking-wider">HUMANO</span>`}
+                        <span class="flex items-center gap-1.5 font-bold text-slate-300"><span class="text-slate-600">${Icons.Shield}</span> <span class="${p.reputation > 70 ? 'text-emerald-400' : p.reputation < 30 ? 'text-red-400' : 'text-yellow-400'}">${p.reputation}</span></span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="text-xl tracking-widest">${p.luxuries?.slice(0,2).join('') || ''}</span>
+                        ${p.id !== STATE.myProfile.id ? `<button onclick="STATE.giftTargetId='${p.id}'; STATE.viewingProfileId=null; renderGiftModal();" class="bg-slate-950 border border-slate-800 p-2.5 rounded-xl hover:border-emerald-500/50 text-slate-400 hover:text-emerald-400 transition-all shadow-inner">${Icons.Gift}</button>` : ''}
+                    </div>
+                </div>
+            </div>`).join('')}
+        </div>
+    `;
+}
+
+// --- STREAMS ---
+function RenderStreamsSkeleton() {
+    return `
+    <div class="max-w-6xl mx-auto space-y-6 animate-fade-in pb-10">
+        <h2 class="text-3xl font-black text-white mb-2">Streams en Vivo</h2>
+        <p class="text-slate-500 text-sm mb-6">Apoya a tus traders favoritos con donaciones (Text To Speech simulado).</p>
+        <div id="streams-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+    </div>`;
+}
+
+function UpdateStreamsDynamic() {
+    const grid = document.getElementById('streams-grid');
+    if(!grid || grid.innerHTML.trim() !== '') return;
+
+    const streamers = Object.values(STATE.players).filter(p => p.isBot && p.reputation > 5).sort(()=>0.5-Math.random()).slice(0,4);
+    
+    grid.innerHTML = streamers.length === 0 ? '<div class="col-span-full text-slate-500 italic py-10">Nadie está streameando ahora mismo.</div>' : 
+        streamers.map(s => `
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg group flex flex-col">
+            <div class="h-48 bg-slate-950 relative flex items-center justify-center border-b border-slate-800">
+                <div class="absolute top-3 left-3 bg-red-500 text-white text-[10px] font-black px-2 py-1 rounded uppercase tracking-widest animate-pulse">EN VIVO</div>
+                <div class="absolute top-3 right-3 bg-slate-900/80 text-white text-[10px] font-mono px-2 py-1 rounded border border-slate-700">👁️ ${Math.floor(Math.random()*5000 + 100)} viewers</div>
+                <div class="text-7xl group-hover:scale-110 transition-transform">${s.avatar}</div>
+            </div>
+            <div class="p-5 flex justify-between items-center bg-slate-900">
+                <div>
+                    <div class="font-black text-white text-lg flex items-center gap-2">${s.name} <span class="text-xs bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded font-mono uppercase tracking-widest">Bot</span></div>
+                    <div class="text-xs text-slate-500 mt-1">Haciendo trading e ignorando rugs.</div>
+                </div>
+                <button onclick="dispatchAction('ACTION_CHAT', {msg: 'Enviando TTS a ${s.name}: LFG bro!'}); addToast('TTS Donado a ${s.name}','💸');" class="bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/40 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors uppercase tracking-wider">Donar TTS</button>
+            </div>
+        </div>`).join('');
+}
+
 
 function RenderShop() {
     const me = STATE.players[STATE.myProfile.id];
@@ -1284,7 +1497,7 @@ function RenderShop() {
                 <h3 class="font-black text-white text-lg mb-1">${item.name}</h3>
                 <div class="text-sm font-mono font-bold text-emerald-400 mb-4 bg-emerald-500/10 w-fit mx-auto px-3 py-1 rounded-lg border border-emerald-500/20">${formatSOL(item.price)}</div>
                 <div class="text-xs font-bold text-slate-400 mb-6 flex justify-center items-center gap-1.5 bg-slate-950 py-1.5 rounded-lg shadow-inner"><span class="text-slate-600">${Icons.Shield}</span> +${item.rep} Reputación</div>
-                <button onclick="dispatchAction('ACTION_BUY_LUXURY', {itemId: '${item.id}'});" class="mt-auto w-full py-3.5 rounded-xl font-black text-sm uppercase tracking-wider transition-all ${me.solBalance < item.price ? 'opacity-50 cursor-not-allowed bg-slate-950 text-slate-600 border border-slate-800' : 'bg-white text-slate-950 hover:bg-slate-200 hover:shadow-lg'}">Comprar</button>
+                <button onclick="dispatchAction('ACTION_BUY_LUXURY', {itemId: '${item.id}'}); switchTab('shop');" class="mt-auto w-full py-3.5 rounded-xl font-black text-sm uppercase tracking-wider transition-all ${me.solBalance < item.price ? 'opacity-50 cursor-not-allowed bg-slate-950 text-slate-600 border border-slate-800' : 'bg-white text-slate-950 hover:bg-slate-200 hover:shadow-lg'}">Comprar</button>
             </div>`;
         });
         html += `</div>`;
@@ -1293,149 +1506,63 @@ function RenderShop() {
     return html;
 }
 
-function RenderTokenDetail() {
-    const token = STATE.tokens[STATE.selectedTokenId];
-    if (!token) { STATE.selectedTokenId = null; return RenderMarket(); }
-    
+function RenderLaunch() {
     const me = STATE.players[STATE.myProfile.id];
-    const currentPrice = getPrice(token.solPool, token.tokenPool);
-    const mcap = currentPrice * token.initialSupply * 150; 
-    const balTokens = me.portfolio[token.id] || 0;
-    
-    const numAmt = parseFloat(document.getElementById('t-amount')?.value || STATE.tradeAmount) || 0;
-    let estimated = 0;
-    if(STATE.tradeType === 'buy' && numAmt > 0) estimated = calcTokensOut(numAmt, token.solPool, token.tokenPool);
-    if(STATE.tradeType === 'sell' && numAmt > 0) estimated = calcSolOut(numAmt, token.solPool, token.tokenPool);
-
-    const holders = Object.values(STATE.players).filter(p => p.portfolio[token.id] > 0)
-        .map(p => ({ ...p, tokenAmount: p.portfolio[token.id], pct: (p.portfolio[token.id]/token.initialSupply)*100 }))
-        .sort((a,b) => b.tokenAmount - a.tokenAmount).slice(0, 50);
-
-    const progress = Math.min(100, ((token.solPool - VIRTUAL_SOL_RESERVE) / BONDING_CURVE_LIMIT) * 100);
-    const isComplete = progress >= 100;
-    
-    const imgHTML = token.image && token.image.startsWith('http') 
-      ? `<img src="${token.image}" class="w-16 h-16 md:w-20 md:h-20 rounded-2xl object-cover border-2 border-slate-700 shadow-lg" onerror="this.outerHTML='<div class=\\'w-16 h-16 md:w-20 md:h-20 bg-slate-800 rounded-2xl flex items-center justify-center border-2 border-slate-700 text-3xl shadow-lg\\'>🪙</div>'"/>` 
-      : `<div class="w-16 h-16 md:w-20 md:h-20 bg-slate-800 rounded-2xl flex items-center justify-center border-2 border-slate-700 text-3xl shadow-lg">🪙</div>`;
-
+    const maxDevBuy = Math.max(0, me.solBalance - 1);
     return `
-    <div class="space-y-4 max-w-7xl mx-auto h-full flex flex-col animate-fade-in">
-        <button onclick="STATE.selectedTokenId=null; STATE.activeTab='market'; updateUI();" class="text-slate-400 hover:text-white flex items-center gap-2 text-xs font-bold uppercase tracking-widest w-fit bg-slate-900 px-5 py-2.5 rounded-xl border border-slate-800 transition-colors shadow-sm hover:border-slate-600">← Volver al Mercado</button>
-        
-        <div class="flex flex-col lg:flex-row gap-5 h-full pb-10 md:pb-0">
-            <!-- CHART Y DETALLES -->
-            <div class="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 flex flex-col min-h-[500px] shadow-xl">
-                <div class="flex justify-between items-start md:items-end mb-6 flex-wrap gap-4">
-                    <div class="flex gap-4 items-center w-full md:w-auto">
-                        <div class="shrink-0">${imgHTML}</div>
-                        <div>
-                            <h1 class="text-2xl md:text-4xl font-black text-white tracking-tight mb-2">${token.name} <span class="text-emerald-400 text-lg md:text-xl bg-emerald-500/10 px-3 py-1 rounded-xl ml-1 font-mono border border-emerald-500/20">$${token.ticker}</span></h1>
-                            <div class="flex flex-wrap items-center gap-3 text-xs md:text-sm font-bold text-slate-400">
-                                <span class="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors" onclick="STATE.viewingProfileId='${token.creatorId}'; STATE.giftTargetId=null; renderModal();">
-                                    Dev: <span class="underline">${token.creatorName}</span>
-                                </span>
-                                <div class="w-1 h-1 bg-slate-700 rounded-full"></div>
-                                <span class="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 shadow-inner" title="Reputación del Creador">
-                                    <span class="text-slate-600">${Icons.Shield}</span> <span class="${(STATE.players[token.creatorId]?.reputation || 1) > 70 ? 'text-emerald-400' : 'text-slate-300'}">${(STATE.players[token.creatorId]?.reputation || 1)}</span>
-                                </span>
-                                ${token.creatorId === me.id ? `<span class="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2.5 py-1 rounded-lg uppercase tracking-wider text-[10px]">Es tuyo</span>` : ''}
-                            </div>
-                        </div>
-                    </div>
-                    <div class="text-right bg-slate-950 p-4 md:p-5 rounded-2xl border border-slate-800 shadow-inner w-full md:w-auto flex flex-row md:flex-col justify-between items-center md:items-end">
-                        <div class="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Precio actual</div>
-                        <div class="text-xl md:text-3xl font-mono font-black ${isComplete ? 'text-purple-400' : 'text-emerald-400'}">${currentPrice.toFixed(8)} <span class="text-sm text-slate-500">SOL</span></div>
-                        <div class="text-[10px] md:text-sm font-bold text-slate-400 mt-1 md:mt-2">MCap: <span class="text-white">${formatSOL(mcap / 150)}</span></div>
-                    </div>
-                </div>
-
-                <!-- Bonding Curve Progress -->
-                <div class="mb-5 bg-[#020617] p-4 rounded-2xl border border-slate-800 shadow-inner">
-                    <div class="flex justify-between text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2.5">
-                        <span class="${isComplete ? 'text-purple-400 animate-pulse' : ''}">Curva de Liquidez ${isComplete ? '(Completa - Raydium)' : ''}</span>
-                        <span class="text-emerald-400">${progress.toFixed(1)}%</span>
-                    </div>
-                    <div class="h-4 w-full bg-slate-900 rounded-full border border-slate-700 overflow-hidden shadow-inner">
-                        <div class="h-full ${isComplete ? 'bg-gradient-to-r from-purple-600 to-purple-400' : 'bg-gradient-to-r from-emerald-600 to-emerald-400'} transition-all duration-500" style="width: ${progress}%"></div>
-                    </div>
-                </div>
-
-                <div class="w-full flex-1 bg-[#020617] border border-slate-800 rounded-2xl overflow-hidden relative shadow-inner">
-                    ${generateChartSVG(token, 800, 400, false)}
-                </div>
+    <div class="max-w-lg mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl animate-fade-in mt-4 md:mt-10">
+        <h2 class="text-2xl font-black text-white mb-2 flex items-center gap-3">${Icons.Rocket} Desplegar Token</h2>
+        <p class="text-xs text-slate-500 mb-8 font-bold uppercase tracking-wider leading-relaxed">El token inicia con curva Pump.fun (20 SOL virtuales). Ganas reputación por volumen.</p>
+        <form id="launch-form" onsubmit="event.preventDefault(); const n=document.getElementById('l-name').value; const t=document.getElementById('l-ticker').value; const i=document.getElementById('l-image')?.value || STATE.launchData.image; const d=parseFloat(document.getElementById('l-devbuy').value)||0; if(n&&t){dispatchAction('ACTION_LAUNCH', {name:n, ticker:t, image:i, devBuy:d}); STATE.launchData.image=''; switchTab('market');}" class="space-y-5">
+            <div>
+                <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Nombre del Proyecto</label>
+                <input id="l-name" placeholder="Ej: Solana Doge" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3.5 text-white focus:border-emerald-500 outline-none font-bold transition-colors" />
             </div>
-
-            <!-- PANEL DERECHO (Trade) -->
-            <div class="w-full lg:w-80 xl:w-96 shrink-0 flex flex-col gap-5">
-                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl">
-                    <div class="flex bg-slate-950 border border-slate-800 rounded-xl p-1.5 mb-6 shadow-inner">
-                        <button onclick="STATE.tradeType='buy'; STATE.tradeAmount=''; requestUIRender();" class="flex-1 py-2.5 font-black text-sm rounded-lg transition-all uppercase tracking-wider ${STATE.tradeType==='buy'?'bg-emerald-500 text-slate-950 shadow-md':'text-slate-500 hover:text-white'}">Comprar</button>
-                        <button onclick="STATE.tradeType='sell'; STATE.tradeAmount=''; requestUIRender();" class="flex-1 py-2.5 font-black text-sm rounded-lg transition-all uppercase tracking-wider ${STATE.tradeType==='sell'?'bg-red-500 text-slate-950 shadow-md':'text-slate-500 hover:text-white'}">Vender</button>
-                    </div>
-
-                    <div class="flex justify-between text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
-                        <span>Pagas en ${STATE.tradeType==='buy'?'SOL':'$'+token.ticker}</span>
-                        <span class="text-emerald-400">Bal: ${STATE.tradeType==='buy'?formatSOL(me.solBalance):formatToken(balTokens)}</span>
-                    </div>
-                    
-                    <div class="relative mb-3">
-                        <input id="t-amount" type="number" value="${STATE.tradeAmount}" oninput="STATE.tradeAmount = this.value; requestUIRender();" placeholder="0.0" class="w-full bg-[#020617] border border-slate-800 rounded-xl px-4 py-4 text-white font-mono text-2xl focus:outline-none focus:border-emerald-500 transition-colors shadow-inner" />
-                    </div>
-                    
-                    <div class="flex gap-2 mb-6">
-                        ${[1, 10, 50, 100].map(pct => `
-                            <button onclick="STATE.tradeAmount = STATE.tradeType === 'buy' ? (Math.max(0, ${me.solBalance} - 0.01) * ${pct/100}).toFixed(4) : (${balTokens} * ${pct/100}).toFixed(0); requestUIRender();" class="flex-1 bg-slate-950 border border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-500/10 text-slate-400 hover:text-emerald-400 text-[10px] md:text-xs py-2.5 rounded-lg font-bold font-mono transition-all shadow-inner">
-                                ${pct}%
-                            </button>
-                        `).join('')}
-                    </div>
-
-                    <div class="bg-slate-950 border border-slate-800 p-4 md:p-5 rounded-2xl mb-6 space-y-3 text-xs md:text-sm shadow-inner">
-                        <div class="flex justify-between text-slate-400 font-bold uppercase tracking-wider text-[10px] md:text-xs"><span>Recibes est (Fee 5%):</span> <span class="font-mono text-white text-sm md:text-base">${STATE.tradeType==='buy'?formatToken(estimated):formatSOL(estimated)}</span></div>
-                        <div class="h-px bg-slate-800 w-full"></div>
-                        <div class="flex justify-between text-slate-500 font-bold uppercase tracking-wider text-[10px] md:text-xs"><span>Liquidez Real:</span> <span class="font-mono">${formatSOL(token.solPool - VIRTUAL_SOL_RESERVE)}</span></div>
-                    </div>
-
-                    <button onclick="const a=parseFloat(document.getElementById('t-amount').value); if(a>0){ dispatchAction('ACTION_TRADE', {tokenId:'${token.id}', isBuy:${STATE.tradeType==='buy'}, amount:a}); STATE.tradeAmount=''; requestUIRender(); }" class="w-full py-4 rounded-xl font-black text-lg uppercase tracking-widest transition-all shadow-lg ${numAmt<=0 ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : STATE.tradeType==='buy' ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-emerald-500/20' : 'bg-red-500 text-slate-950 hover:bg-red-400 shadow-red-500/20'}">
-                        ${STATE.tradeType==='buy' ? 'Ape In' : 'Dump'}
-                    </button>
-
-                    <!-- Extra Dev & Burn tools -->
-                    <div class="mt-5 flex flex-col sm:flex-row gap-3">
-                        <button onclick="const b = prompt('¿Quemar tokens? Se restarán de tu inventario y del Supply Total para subir el precio base.'); if(b && Number(b)>0){ dispatchAction('ACTION_BURN', { tokenId: '${token.id}', amount: Number(b) }); }" ${balTokens <= 0 ? 'disabled' : ''} class="flex-1 bg-orange-500/10 text-orange-500 border border-orange-500/30 hover:bg-orange-500/20 rounded-xl py-3 text-[10px] font-black flex justify-center items-center gap-2 transition-all disabled:opacity-30 disabled:cursor-not-allowed uppercase tracking-widest">
-                            ${Icons.Flame} Quemar
-                        </button>
-                        ${token.creatorId === me.id ? `
-                        <button onclick="if(window.confirm('RUG PULL: ¿Vender 100% de tu inventario de golpe? Perderás reputación drásticamente.')){ dispatchAction('ACTION_TRADE', { tokenId: '${token.id}', isBuy: false, amount: ${balTokens} }); }" class="flex-1 bg-red-950/40 text-red-500 border border-red-900/50 hover:bg-red-900/60 rounded-xl py-3 text-[10px] font-black flex justify-center items-center gap-2 transition-all uppercase tracking-widest">
-                            ${Icons.Alert} Rug Pull
-                        </button>` : ''}
-                    </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Ticker</label>
+                    <input id="l-ticker" maxlength="6" placeholder="Ej: SDOGE" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3.5 text-white focus:border-emerald-500 outline-none uppercase font-black tracking-widest transition-colors" />
                 </div>
-
-                <!-- HOLDERS MINI LIST -->
-                <div class="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden flex-1 flex flex-col min-h-[250px] shadow-xl">
-                    <div class="p-4 border-b border-slate-800 bg-slate-950 text-[10px] md:text-xs font-black text-slate-500 uppercase flex justify-between tracking-widest">
-                        <span class="flex items-center gap-2">${Icons.PieChart} Holder</span><span>% Supply</span>
-                    </div>
-                    <div class="overflow-y-auto p-2 space-y-1.5 flex-1">
-                        ${holders.length === 0 ? `<div class="text-center text-slate-500 py-8 text-sm font-bold">Nadie tiene este token.</div>` : ''}
-                        ${holders.map((h, i) => `
-                        <div class="cursor-pointer flex justify-between items-center p-3 rounded-xl transition-colors ${h.id===me.id ? 'bg-emerald-900/20 border border-emerald-900/30' : 'hover:bg-slate-800/50 border border-transparent'}" onclick="STATE.viewingProfileId='${h.id}'; STATE.giftTargetId=null; renderModal();">
-                            <div class="flex items-center gap-3">
-                                <span class="text-slate-600 text-[10px] font-mono font-black w-4 text-right">${i+1}.</span>
-                                <div class="relative"><span class="text-2xl">${h.avatar}</span>${h.isSpeaking ? `<div class="absolute inset-0 speaking-ring border-emerald-500"></div>` : ''}</div>
-                                <div class="flex flex-col">
-                                    <span class="text-xs font-bold text-slate-200">${h.name}</span>
-                                    ${h.isBot ? `<span class="text-[9px] text-purple-400 font-mono font-bold uppercase mt-0.5 tracking-wider">BOT</span>` : ''}
-                                </div>
-                            </div>
-                            <div class="text-right">
-                                <div class="text-xs font-mono font-bold text-emerald-400">${h.pct.toFixed(2)}%</div>
-                            </div>
-                        </div>`).join('')}
+                <div>
+                    <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Icono (Local o URL)</label>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="document.getElementById('file-upload-icon').click()" class="bg-slate-800 p-3.5 rounded-xl hover:bg-slate-700 transition-colors shrink-0 border border-slate-700" title="Subir Imagen Local">${Icons.Upload}</button>
+                        <input type="file" id="file-upload-icon" class="hidden" accept="image/*" onchange="handleImageUpload(event)">
+                        <input id="l-image" value="${STATE.launchData.image.startsWith('data:image') ? '' : STATE.launchData.image}" oninput="STATE.launchData.image = this.value; document.getElementById('img-preview').classList.add('hidden');" placeholder="URL opcional..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-3.5 text-slate-300 text-xs focus:border-emerald-500 outline-none font-mono transition-colors" />
                     </div>
                 </div>
             </div>
+            
+            <div class="flex justify-center">
+                <img id="img-preview" src="${STATE.launchData.image.startsWith('data:image') ? STATE.launchData.image : ''}" class="${STATE.launchData.image.startsWith('data:image') ? '' : 'hidden'} w-16 h-16 rounded-xl object-cover border border-slate-700 shadow-md">
+            </div>
+
+            <div class="pt-2">
+                <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 flex justify-between"><span>Snipe del Dev (Opcional)</span> <span class="text-emerald-400">Max: ${formatSOL(maxDevBuy)}</span></label>
+                <input id="l-devbuy" type="number" step="0.01" min="0" max="${maxDevBuy}" placeholder="Cantidad en SOL" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3.5 text-emerald-400 font-mono text-lg focus:border-emerald-500 outline-none transition-colors" />
+                <span class="text-[10px] text-slate-500 mt-2 block font-bold leading-relaxed">Compras automáticamente la primera vela en la misma transacción del bloque.</span>
+            </div>
+            <div class="bg-slate-950 p-5 rounded-xl border border-slate-800 text-xs md:text-sm space-y-2 mt-4 shadow-inner">
+                <div class="flex justify-between font-bold text-slate-400 uppercase tracking-wider"><span>Costo de Red (Fijo):</span><span class="font-mono text-white">1.00 SOL</span></div>
+                <div class="flex justify-between font-black text-emerald-400 pt-3 border-t border-slate-800/50 mt-3 uppercase tracking-wider"><span>Total Mínimo a Pagar:</span><span class="font-mono">1.00 SOL</span></div>
+            </div>
+            <div class="flex gap-3 pt-4">
+                <button type="submit" class="flex-1 bg-emerald-500 text-slate-950 font-black py-4 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:bg-emerald-400 transition-all text-base tracking-widest uppercase">Lanzar Token</button>
+                <button type="button" onclick="switchTab('market');" class="px-6 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-700 transition-colors uppercase tracking-widest text-xs">Cancelar</button>
+            </div>
+        </form>
+    </div>`;
+}
+
+function RenderCharity() {
+    return `
+    <div class="max-w-4xl mx-auto space-y-6 animate-fade-in text-center pt-10">
+        <div class="text-6xl mb-4 animate-pulse">💖</div>
+        <h1 class="text-4xl font-black text-white">Beneficencia Degen</h1>
+        <p class="text-slate-400 text-sm max-w-lg mx-auto">Dona tus ganancias en SOL a causas benéficas reales. Pierdes liquidez, pero ganas Reputación masivamente entre los degens. El karma existe.</p>
+        <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl max-w-sm mx-auto shadow-xl mt-8">
+            <input id="charity-amount" type="number" placeholder="Monto en SOL" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-4 text-pink-500 font-mono text-2xl text-center mb-4 focus:border-pink-500 outline-none transition-colors"/>
+            <button onclick="const amt = parseFloat(document.getElementById('charity-amount').value); if(amt>0) { dispatchAction('ACTION_CHARITY', { amount: amt }); switchTab('market'); addToast('Donación enviada!', '💖'); }" class="w-full bg-pink-600 hover:bg-pink-500 text-white font-black py-4 rounded-xl shadow-[0_0_20px_rgba(219,39,119,0.4)] transition-all uppercase tracking-widest">Donar y Subir Reputación</button>
         </div>
     </div>`;
 }
