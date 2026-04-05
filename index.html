@@ -29,8 +29,8 @@
 <body class="selection:bg-emerald-500/30 text-sm md:text-base flex flex-col h-screen">
 
     <div id="app" class="flex-1 flex flex-col md:flex-row overflow-hidden"></div>
-    <div id="toasts-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 pointer-events-none"></div>
-    <div id="modal-container" class="fixed inset-0 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden"></div>
+    <div id="toasts-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 pointer-events-none w-11/12 max-w-md"></div>
+    <div id="modal-container" class="fixed inset-0 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden overflow-y-auto"></div>
     
     <input type="file" id="file-loader" accept=".json" class="hidden" onchange="handleFileLoad(event)" />
 
@@ -277,7 +277,7 @@ async function toggleVoice() {
         STATE.voiceActive = true;
         updateUI();
 
-        // En modo P2P, emitir streams. En modo offline solo nos vemos la animación del micro.
+        // En modo P2P, emitir streams.
         if (peer && !STATE.roomConfig.isOffline) {
             Object.values(STATE.players).forEach(p => {
                 if (!p.isBot && p.peerId && p.id !== STATE.myProfile.id) {
@@ -305,8 +305,23 @@ async function toggleVoice() {
 }
 
 // ==========================================
-// SISTEMA DE RED (OFFLINE / P2P WEBRTC)
+// SISTEMA DE RED (OFFLINE / P2P WEBRTC CON STUN)
 // ==========================================
+
+// Configuración robusta de WebRTC con servidores públicos gratuitos (Para atravesar Wi-Fis distintos)
+const WEBRTC_CONFIG = {
+    config: {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' }
+        ]
+    },
+    debug: 1
+};
+
 window.adjustBots = function(targetCount) {
     if (!STATE.roomConfig.isHost) return;
     if (!STATE.roomConfig.botsEnabled) targetCount = 0;
@@ -353,13 +368,16 @@ function initNetwork(roomId, mode, customBotCount = 20) {
     STATE.roomConfig.isOffline = false;
     if (mode === 'host') {
         try {
-            peer = new Peer(`degen-p2p-sim-${roomId}`);
+            peer = new Peer(`degen-p2p-sim-${roomId}`, WEBRTC_CONFIG);
             peer.on('open', (id) => {
                 STATE.myProfile.peerId = id;
                 if (STATE.players[STATE.myProfile.id]) STATE.players[STATE.myProfile.id].peerId = id;
                 addToast(`Sala P2P creada con éxito: ${roomId}`, '🌐');
             });
-            peer.on('error', (err) => addToast(`Error de conexión P2P. Intenta de nuevo.`, '⚠️'));
+            peer.on('error', (err) => {
+                console.error(err);
+                addToast(`Error al crear la sala. Verifica tu conexión.`, '⚠️');
+            });
             
             peer.on('connection', (conn) => {
                 hostConnections.push(conn);
@@ -379,11 +397,13 @@ function initNetwork(roomId, mode, customBotCount = 20) {
 
     } else if (mode === 'client') {
         try {
-            peer = new Peer();
+            peer = new Peer(WEBRTC_CONFIG);
             peer.on('open', (id) => {
                 STATE.myProfile.peerId = id;
                 addToast("Conectando a la red P2P...", '⏳');
-                clientConn = peer.connect(`degen-p2p-sim-${roomId}`);
+                
+                // Conectando al Host (Usando modo reliable para mejor estabilidad a distancia)
+                clientConn = peer.connect(`degen-p2p-sim-${roomId}`, { reliable: true });
                 
                 clientConn.on('open', () => {
                     clientConn.send({ type: 'JOIN_REQ', payload: STATE.myProfile });
@@ -405,7 +425,14 @@ function initNetwork(roomId, mode, customBotCount = 20) {
             });
 
             peer.on('error', (err) => {
-                alert("Error conectando a la sala P2P. Verifique el código.");
+                console.error("PeerJS Error:", err);
+                if (err.type === 'peer-unavailable') {
+                    alert(`No se encontró el Host con el código: ${roomId}. ¿Está seguro de que el código es correcto y el host sigue en línea?`);
+                } else if (err.type === 'network' || err.type === 'webrtc') {
+                    alert(`La red actual está bloqueando la conexión P2P WebRTC. Intenta usar otra red Wi-Fi o datos móviles.`);
+                } else {
+                    alert("Error de conexión P2P: " + err.type);
+                }
                 STATE.route = 'menu';
                 requestUIRender(true);
             });
@@ -481,6 +508,7 @@ function processMessageAsClient(data) {
         requestUIRender(true);
     }
     if (type === 'EVENT_ALERT') {
+        // En cliente, solo mostramos si trackeamos al que lanza el token
         if (STATE.trackedIds.has(senderId)) addToast(payload.msg, payload.icon);
     }
 }
@@ -501,6 +529,7 @@ function hostEmitAlert(senderId, msg, icon) {
             const packet = { type: 'EVENT_ALERT', senderId, payload: { msg, icon } };
             hostConnections.forEach(conn => conn.send(packet));
         }
+        // En Host/Offline, mostramos si lo tenemos trackeado
         if (STATE.trackedIds.has(senderId)) addToast(msg, icon);
     }
 }
@@ -531,6 +560,7 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
         player.tradesInfo[tokenId] = { entryPrice: getPrice(token.solPool, token.tokenPool) };
         
         logMsg = `🟢 ${player.name} compró $${token.ticker}`;
+        // NOTA: Se eliminó hostEmitAlert para trades, 0 spam visual de compras.
 
     } else {
         const currentBal = player.portfolio[tokenId] || 0;
@@ -543,6 +573,7 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
         player.solBalance += solOut; player.portfolio[tokenId] -= amount;
         
         logMsg = `🔴 ${player.name} vendió $${token.ticker}`;
+        // NOTA: Se eliminó hostEmitAlert para trades, 0 spam visual de ventas.
         
         if(player.portfolio[tokenId] <= 0) delete player.tradesInfo[tokenId];
     }
@@ -603,6 +634,8 @@ function handleLaunchHost(name, ticker, image, devBuy, playerId) {
     const logMsg = `🚀 ${player.name} lanzó $${STATE.tokens[tokenId].ticker}`;
     STATE.chat.unshift({ id: Date.now(), sender: 'System', text: logMsg, sys: true });
     STATE.chat = STATE.chat.slice(0, 80);
+    
+    // Solo mostramos alerta visual P2P/Offline cuando crean tokens
     hostEmitAlert(playerId, logMsg, '🚀');
     
     if (devBuy > 0) handleTradeHost(tokenId, true, devBuy, playerId, false);
@@ -684,7 +717,6 @@ function startBotBrain() {
         let didTrade = false;
 
         activeBots.forEach(bot => {
-            // Ventas
             Object.keys(bot.portfolio).forEach(tokenId => {
                 const amount = bot.portfolio[tokenId];
                 if (amount <= 0) return;
@@ -707,7 +739,6 @@ function startBotBrain() {
                 if (sellRatio > 0) { handleTradeHost(tokenId, false, amount * sellRatio, bot.id, true); didTrade = true; }
             });
 
-            // Compras
             if (bot.solBalance > 0.5 && tokenKeys.length > 0 && Math.random() < 0.3) {
                 const attractiveTokens = tokenKeys.map(tid => STATE.tokens[tid]).filter(t => {
                     const ageMs = Date.now() - t.createdAt;
@@ -732,7 +763,6 @@ function startBotBrain() {
                 }
             }
 
-            // Lanzamientos
             const canLaunch = bot.solBalance > 5 && tokenKeys.length < 30;
             const wantsToLaunch = (bot.strategy === 'Degen' && Math.random() < 0.05) || Math.random() < 0.01;
             if (canLaunch && wantsToLaunch) {
@@ -742,7 +772,6 @@ function startBotBrain() {
                 didTrade = true;
             }
 
-            // Chatter
             if(Math.random() < 0.01) {
                 const chatter = ["LFG!! 🚀", "Rug pull incoming 💀", "Dev is cooking 👨‍🍳", "HODL 💎🙌", "Scam?", "WEN RAYDIUM?", "Ape in!"];
                 handleChatHost(chatter[Math.floor(Math.random()*chatter.length)], bot.id, false);
@@ -899,7 +928,6 @@ function updateDynamicDOM() {
 
     let currentTabId = STATE.selectedTokenId ? 'detail-' + STATE.selectedTokenId + '-' + STATE.tradeType : STATE.activeTab;
     
-    // 1. RENDER SKELETON (Solo si el ID de la pestaña cambia)
     if (STATE._renderedTabId !== currentTabId) {
         if (STATE.selectedTokenId) el.innerHTML = RenderTokenDetailSkeleton();
         else if (STATE.activeTab === 'market') el.innerHTML = RenderMarketSkeleton();
@@ -912,7 +940,6 @@ function updateDynamicDOM() {
         STATE._renderedTabId = currentTabId;
     }
 
-    // 2. ACTUALIZACIÓN PARCIAL DINÁMICA (Sin tocar los inputs)
     if (STATE.selectedTokenId) UpdateTokenDetailDynamic();
     else if (STATE.activeTab === 'market') UpdateMarketDynamic();
     else if (STATE.activeTab === 'portfolio') UpdateLeaderboardDynamic();
@@ -939,37 +966,39 @@ function ViewProfile() {
 function ViewMenu() {
     return `
     <div class="w-full flex flex-col items-center justify-center p-4 h-screen bg-gradient-to-b from-slate-950 to-slate-900">
-        <div class="mb-10 text-center">
-            <div class="text-7xl mb-4 animate-bounce">${STATE.myProfile.avatar}</div>
-            <h1 class="text-4xl font-black text-white tracking-tighter">Degen<span class="text-emerald-400">Terminal</span></h1>
-            <p class="text-slate-500 font-mono mt-2 tracking-widest text-xs">Simulador P2P Ultimate</p>
+        <div class="mb-6 md:mb-10 text-center">
+            <div class="text-6xl md:text-7xl mb-4 animate-bounce">${STATE.myProfile.avatar}</div>
+            <h1 class="text-3xl md:text-4xl font-black text-white tracking-tighter">Degen<span class="text-emerald-400">Terminal</span></h1>
+            <p class="text-slate-500 font-mono mt-2 tracking-widest text-[10px] md:text-xs">Simulador P2P Ultimate</p>
         </div>
         <div class="flex flex-col gap-4 w-full max-w-sm relative z-10">
             
-            <button onclick="STATE.roomConfig={...STATE.roomConfig, code:'LOCAL', isHost:true, isOffline:true}; initNetwork('LOCAL', 'offline', STATE.roomConfig.botCount); STATE.route='lobby'; updateUI();" class="bg-purple-600 hover:bg-purple-500 text-white font-black py-4 rounded-xl shadow-[0_0_20px_rgba(147,51,234,0.3)] transition-all flex justify-center items-center gap-2 text-lg border border-purple-500/50">
+            <div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 shadow-xl mb-1">
+                <label class="text-[10px] text-slate-500 uppercase tracking-widest font-black block mb-3 text-center">Unirse a la sala de un amigo</label>
+                <div class="flex gap-2">
+                    <input id="input-room-code" type="text" maxlength="5" placeholder="CÓDIGO" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-4 text-center text-2xl font-mono text-emerald-400 font-black tracking-widest focus:border-emerald-500 outline-none transition-colors shadow-inner uppercase" />
+                    <button onclick="const c=document.getElementById('input-room-code').value.toUpperCase(); if(c.length!==5)return alert('El código debe tener 5 caracteres'); STATE.roomConfig={...STATE.roomConfig, code:c, isHost:false, isOffline:false}; initNetwork(c, 'client'); STATE.route='lobby'; updateUI();" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-6 rounded-xl transition-colors shadow-[0_0_15px_rgba(16,185,129,0.3)] tracking-wider">ENTRAR</button>
+                </div>
+            </div>
+
+            <div class="relative my-1">
+                <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-800"></div></div>
+                <div class="relative flex justify-center text-[10px]"><span class="bg-slate-950 px-3 text-slate-500 uppercase tracking-widest font-black rounded-full border border-slate-800">O crea tu propia partida</span></div>
+            </div>
+
+            <button onclick="const c=generateRoomCode(); STATE.roomConfig={...STATE.roomConfig, code:c, isHost:true, isOffline:false}; initNetwork(c, 'host', STATE.roomConfig.botCount); STATE.route='lobby'; updateUI();" class="bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 text-sm border border-slate-700">
+                ${Icons.Settings} Crear Sala P2P (Host)
+            </button>
+            
+            <button onclick="STATE.roomConfig={...STATE.roomConfig, code:'LOCAL', isHost:true, isOffline:true}; initNetwork('LOCAL', 'offline', STATE.roomConfig.botCount); STATE.route='lobby'; updateUI();" class="bg-purple-600/20 text-purple-400 border border-purple-500/30 hover:bg-purple-600/30 font-bold py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 text-sm">
                 ${Icons.Gamepad} Jugar Solo (Offline)
             </button>
 
-            <div class="relative my-2">
-                <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-800"></div></div>
-                <div class="relative flex justify-center text-[10px]"><span class="bg-slate-950 px-3 text-slate-500 uppercase tracking-widest font-black rounded-full border border-slate-800">Multijugador Online (P2P)</span></div>
-            </div>
-
-            <button onclick="const c=generateRoomCode(); STATE.roomConfig={...STATE.roomConfig, code:c, isHost:true, isOffline:false}; initNetwork(c, 'host', STATE.roomConfig.botCount); STATE.route='lobby'; updateUI();" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3 rounded-xl transition-all flex justify-center items-center gap-2 text-base">
-                ${Icons.Settings} Crear Sala P2P (Host)
+            <button onclick="document.getElementById('file-loader').click()" class="bg-slate-900 hover:bg-slate-800 text-slate-400 font-bold py-3 rounded-xl transition-colors flex justify-center items-center gap-2 text-xs border border-slate-800 mt-2">
+                ${Icons.Upload} Cargar Partida Guardada
             </button>
-            <div class="flex gap-2">
-                <input id="input-room-code" type="text" maxlength="5" placeholder="ID de 5 dígitos" class="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-center text-xl font-mono text-white tracking-widest focus:border-emerald-500 outline-none transition-colors" />
-                <button onclick="const c=document.getElementById('input-room-code').value; if(c.length!==5)return alert('ID inválido'); STATE.roomConfig={...STATE.roomConfig, code:c, isHost:false, isOffline:false}; initNetwork(c, 'client'); STATE.route='lobby'; updateUI();" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-6 rounded-xl transition-colors">Entrar</button>
-            </div>
-            
-            <div class="flex justify-between gap-2 mt-4">
-                <button onclick="document.getElementById('file-loader').click()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl transition-colors flex justify-center items-center gap-2 text-sm border border-slate-700">
-                    ${Icons.Upload} Cargar Partida Guardada
-                </button>
-            </div>
 
-            <button onclick="STATE.route='profile'; updateUI();" class="mt-4 text-xs text-slate-500 hover:text-white uppercase tracking-widest font-bold">← Cambiar Perfil</button>
+            <button onclick="STATE.route='profile'; updateUI();" class="mt-2 text-xs text-slate-500 hover:text-white uppercase tracking-widest font-bold text-center w-full">← Cambiar Perfil</button>
         </div>
     </div>`;
 }
@@ -978,22 +1007,22 @@ function ViewLobby() {
     return `
     <div class="w-full flex flex-col items-center justify-center p-4 min-h-screen bg-[#020617]">
         <div class="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-            <div class="p-6 border-b border-slate-800 bg-slate-950 flex justify-between items-center flex-wrap gap-4 shrink-0">
+            <div class="p-6 border-b border-slate-800 bg-slate-950 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
                 <div>
-                    <h2 class="text-2xl font-black text-white">${STATE.roomConfig.isOffline ? 'Sala de Simulación Local' : 'Sala de Espera P2P'}</h2>
-                    ${!STATE.roomConfig.isOffline ? `<div class="text-slate-500 text-sm mt-1">ID de Conexión: <span class="font-mono text-emerald-400 text-xl bg-emerald-500/10 px-3 py-1 rounded-lg ml-2 tracking-widest border border-emerald-500/20">${STATE.roomConfig.code}</span></div>` 
+                    <h2 class="text-xl md:text-2xl font-black text-white">${STATE.roomConfig.isOffline ? 'Sala de Simulación Local' : 'Sala de Espera P2P'}</h2>
+                    ${!STATE.roomConfig.isOffline ? `<div class="text-slate-500 text-sm mt-1">Código de la sala: <span class="font-mono text-emerald-400 text-xl md:text-2xl bg-emerald-500/10 px-3 py-1 rounded-lg ml-2 tracking-widest border border-emerald-500/20 font-black">${STATE.roomConfig.code}</span></div>` 
                     : `<div class="text-purple-400 text-xs font-mono font-bold mt-1 uppercase tracking-widest flex items-center gap-2">${Icons.Gamepad} Offline Mode</div>`}
                 </div>
                 ${STATE.roomConfig.isHost ? `
-                <div class="flex gap-2">
-                    <button onclick="saveGame()" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 py-3 rounded-xl transition-colors flex items-center gap-2" title="Guardar estado de la partida">${Icons.Save} Guardar</button>
-                    <button onclick="STATE.gameState='playing'; STATE.route='game'; broadcastState(); requestUIRender(true);" class="${STATE.roomConfig.isOffline ? 'bg-purple-600 hover:bg-purple-500 shadow-[0_0_15px_rgba(147,51,234,0.3)]' : 'bg-emerald-500 hover:bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]'} text-slate-950 font-black px-8 py-3 rounded-xl w-full md:w-auto transition-all text-lg flex items-center gap-2">▶ Iniciar Partida</button>
+                <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <button onclick="saveGame()" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 py-3 rounded-xl transition-colors flex items-center justify-center gap-2" title="Guardar estado de la partida">${Icons.Save} <span class="sm:hidden">Guardar</span></button>
+                    <button onclick="STATE.gameState='playing'; STATE.route='game'; broadcastState(); requestUIRender(true);" class="${STATE.roomConfig.isOffline ? 'bg-purple-600 hover:bg-purple-500 shadow-[0_0_15px_rgba(147,51,234,0.3)]' : 'bg-emerald-500 hover:bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]'} text-slate-950 font-black px-8 py-3 rounded-xl w-full transition-all text-lg flex justify-center items-center gap-2">▶ Iniciar</button>
                 </div>` 
-                : `<div class="text-emerald-400 animate-pulse text-sm font-bold w-full md:w-auto text-center border border-emerald-500/30 bg-emerald-500/10 py-3 px-6 rounded-xl">Esperando al Host para iniciar...</div>`}
+                : `<div class="text-emerald-400 animate-pulse text-sm font-bold w-full md:w-auto text-center border border-emerald-500/30 bg-emerald-500/10 py-3 px-6 rounded-xl">Esperando al Host...</div>`}
             </div>
             <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 overflow-y-auto">
                 <div class="flex flex-col h-full bg-slate-950 rounded-2xl border border-slate-800 p-4">
-                    <h3 class="text-xs font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">${Icons.Users} Jugadores Simulados (${Object.keys(STATE.players).length})</h3>
+                    <h3 class="text-xs font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">${Icons.Users} Jugadores (${Object.keys(STATE.players).length})</h3>
                     <div class="space-y-2 flex-1 overflow-y-auto pr-2">
                         ${Object.values(STATE.players).map(p => `
                             <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center gap-3">
@@ -1033,64 +1062,66 @@ function ViewGame() {
     const me = STATE.players[STATE.myProfile.id] || { solBalance: 0, reputation: 1 };
     
     return `
-    <aside class="${STATE.activeTab === 'chat' ? 'flex' : 'hidden'} md:flex w-full md:w-80 bg-slate-900 border-r border-slate-800 flex-col h-[calc(100vh-4rem)] md:h-screen sticky top-0 order-2 md:order-1 flex-shrink-0 z-40 absolute md:relative">
-        <div class="flex border-b border-slate-800 bg-slate-950 shrink-0">
-            <button onclick="STATE.chatTab='global'; updateUI();" class="flex-1 py-4 text-xs font-black uppercase transition-colors flex items-center justify-center gap-2 ${STATE.chatTab === 'global' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}">${Icons.Message} Global</button>
-            <button onclick="STATE.chatTab='system'; updateUI();" class="flex-1 py-4 text-xs font-black uppercase transition-colors flex items-center justify-center gap-2 ${STATE.chatTab === 'system' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-slate-500'}">${Icons.Robot} Red/Bots</button>
-        </div>
-        <div id="chat-list" class="flex-1 overflow-y-auto p-4 space-y-3 text-sm flex flex-col-reverse">
-            <!-- Dynamic Chat -->
-        </div>
-        ${STATE.chatTab === 'global' ? `
-        <div class="p-4 border-t border-slate-800 bg-slate-950">
-            <form onsubmit="event.preventDefault(); const i = document.getElementById('input-chat'); if(i && i.value) { dispatchAction('ACTION_CHAT', { msg: i.value }); i.value = ''; }" class="flex gap-2">
-                <input id="input-chat" value="${STATE.chatInput}" autocomplete="off" placeholder="Escribe aquí..." class="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 text-white transition-colors" />
-                <button type="button" onclick="const url=prompt('URL de la imagen (Ej. https://.../img.jpg):'); if(url){ dispatchAction('ACTION_CHAT', {msg: url}); }" class="bg-slate-800 text-slate-400 px-3 rounded-xl hover:text-white transition-colors" title="Enviar Imagen por URL">📷</button>
-                <button type="submit" class="bg-emerald-500 text-slate-950 px-4 rounded-xl font-bold hover:bg-emerald-400 transition-colors">→</button>
-            </form>
-        </div>` : ''}
-    </aside>
-
-    <main class="${STATE.activeTab === 'chat' ? 'hidden md:flex' : 'flex'} flex-1 flex flex-col h-screen overflow-hidden order-1 md:order-2 bg-[#020617]">
-        <nav class="bg-slate-900 border-b border-slate-800 p-3 md:p-5 flex justify-between items-center shrink-0">
-            <div class="hidden md:flex gap-5 xl:gap-6 overflow-x-auto hide-scrollbar">
-                <button onclick="switchTab('market');" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='market' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Chart} Mercado</button>
-                <button onclick="switchTab('portfolio');" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='portfolio' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Users} Top Degens</button>
-                <button onclick="switchTab('shop');" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='shop' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.PieChart} Lujos</button>
-                <button onclick="switchTab('streams');" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='streams' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Video} Streams</button>
-                <button onclick="switchTab('charity');" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='charity' ? 'text-pink-500' : 'text-slate-500 hover:text-pink-400'}">${Icons.Heart} Beneficencia</button>
+    <div class="flex-1 flex flex-col md:flex-row h-screen relative">
+        <aside class="${STATE.activeTab === 'chat' ? 'flex' : 'hidden'} md:flex w-full md:w-80 bg-slate-900 border-r border-slate-800 flex-col h-full flex-shrink-0 z-40 pb-16 md:pb-0">
+            <div class="flex border-b border-slate-800 bg-slate-950 shrink-0">
+                <button onclick="STATE.chatTab='global'; updateUI();" class="flex-1 py-4 text-xs font-black uppercase transition-colors flex items-center justify-center gap-2 ${STATE.chatTab === 'global' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}">${Icons.Message} Global</button>
+                <button onclick="STATE.chatTab='system'; updateUI();" class="flex-1 py-4 text-xs font-black uppercase transition-colors flex items-center justify-center gap-2 ${STATE.chatTab === 'system' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-slate-500'}">${Icons.Robot} Red/Bots</button>
             </div>
-            
-            <div class="flex items-center gap-4 ml-auto">
-                ${STATE.roomConfig.isHost ? `<button onclick="saveGame()" class="hidden md:flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-800 px-3 py-1.5 rounded-lg transition-colors">${Icons.Save} Guardar</button>` : ''}
-                ${!STATE.roomConfig.isHost && !STATE.roomConfig.isOffline ? `
-                <div class="flex items-center gap-1.5 text-xs font-bold font-mono bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800" title="Latencia P2P">
-                    <div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_currentColor]"></div><span id="ping-display">${STATE.ping}ms</span>
-                </div>` : ''}
-                ${STATE.roomConfig.isOffline ? `<div class="text-purple-400 font-mono text-[10px] uppercase font-black tracking-widest border border-purple-500/30 px-2 py-1 rounded bg-purple-500/10">Modo Local</div>` : ''}
+            <div id="chat-list" class="flex-1 overflow-y-auto p-4 space-y-3 text-sm flex flex-col-reverse">
+                <!-- Dynamic Chat -->
+            </div>
+            ${STATE.chatTab === 'global' ? `
+            <div class="p-4 border-t border-slate-800 bg-slate-950 pb-20 md:pb-4">
+                <form onsubmit="event.preventDefault(); const i = document.getElementById('input-chat'); if(i && i.value) { dispatchAction('ACTION_CHAT', { msg: i.value }); i.value = ''; }" class="flex gap-2">
+                    <input id="input-chat" value="${STATE.chatInput}" autocomplete="off" placeholder="Escribe aquí..." class="flex-1 w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 text-white transition-colors" />
+                    <button type="button" onclick="const url=prompt('URL de la imagen (Ej. https://.../img.jpg):'); if(url){ dispatchAction('ACTION_CHAT', {msg: url}); }" class="bg-slate-800 text-slate-400 px-3 rounded-xl hover:text-white transition-colors" title="Enviar Imagen por URL">📷</button>
+                    <button type="submit" class="bg-emerald-500 text-slate-950 px-4 rounded-xl font-bold hover:bg-emerald-400 transition-colors">→</button>
+                </form>
+            </div>` : ''}
+        </aside>
+
+        <main class="${STATE.activeTab === 'chat' ? 'hidden md:flex' : 'flex'} flex-1 flex flex-col h-full overflow-hidden bg-[#020617] pb-16 md:pb-0">
+            <nav class="bg-slate-900 border-b border-slate-800 p-3 md:p-5 flex justify-between items-center shrink-0">
+                <div class="hidden md:flex gap-5 xl:gap-6 overflow-x-auto hide-scrollbar">
+                    <button onclick="switchTab('market');" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='market' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Chart} Mercado</button>
+                    <button onclick="switchTab('portfolio');" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='portfolio' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Users} Top Degens</button>
+                    <button onclick="switchTab('shop');" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='shop' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.PieChart} Lujos</button>
+                    <button onclick="switchTab('streams');" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='streams' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Video} Streams</button>
+                    <button onclick="switchTab('charity');" class="font-black text-xs uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='charity' ? 'text-pink-500' : 'text-slate-500 hover:text-pink-400'}">${Icons.Heart} Beneficencia</button>
+                </div>
                 
-                <button onclick="toggleVoice()" class="p-2.5 rounded-full transition-all border ${STATE.voiceActive ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'}" title="${STATE.roomConfig.isOffline ? 'Testear Micrófono' : 'Chat de Voz WebRTC'}">
-                    ${STATE.voiceActive ? Icons.Mic : Icons.MicOff}
-                </button>
+                <div class="flex items-center gap-4 ml-auto">
+                    ${STATE.roomConfig.isHost ? `<button onclick="saveGame()" class="hidden md:flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-800 px-3 py-1.5 rounded-lg transition-colors">${Icons.Save} Guardar</button>` : ''}
+                    ${!STATE.roomConfig.isHost && !STATE.roomConfig.isOffline ? `
+                    <div class="flex items-center gap-1.5 text-xs font-bold font-mono bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800" title="Latencia P2P">
+                        <div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_currentColor]"></div><span id="ping-display">${STATE.ping}ms</span>
+                    </div>` : ''}
+                    ${STATE.roomConfig.isOffline ? `<div class="text-purple-400 font-mono text-[10px] uppercase font-black tracking-widest border border-purple-500/30 px-2 py-1 rounded bg-purple-500/10">Modo Local</div>` : ''}
+                    
+                    <button onclick="toggleVoice()" class="p-2.5 rounded-full transition-all border ${STATE.voiceActive ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'}" title="${STATE.roomConfig.isOffline ? 'Testear Micrófono' : 'Chat de Voz WebRTC'}">
+                        ${STATE.voiceActive ? Icons.Mic : Icons.MicOff}
+                    </button>
 
-                <div class="h-8 w-px bg-slate-800 mx-1"></div>
+                    <div class="h-8 w-px bg-slate-800 mx-1"></div>
 
-                <div class="text-right hidden sm:block">
-                    <div class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">${STATE.myProfile.name}</div>
-                    <div class="text-emerald-400 font-bold font-mono text-base" id="my-balance">0 SOL</div>
+                    <div class="text-right hidden sm:block">
+                        <div class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">${STATE.myProfile.name}</div>
+                        <div class="text-emerald-400 font-bold font-mono text-base" id="my-balance">0 SOL</div>
+                    </div>
+                    <div class="relative cursor-pointer" onclick="STATE.viewingProfileId='${STATE.myProfile.id}'; STATE.giftTargetId=null; renderModal();">
+                        <div class="text-3xl bg-slate-950 rounded-full w-12 h-12 flex items-center justify-center border border-slate-800 hover:border-emerald-500/50 transition-colors z-10 relative ${STATE.localSpeaking ? 'bg-emerald-900/40' : ''}">${STATE.myProfile.avatar}</div>
+                        ${STATE.localSpeaking ? `<div class="absolute inset-0 speaking-ring border-emerald-500"></div>` : ''}
+                    </div>
+                    <button onclick="if(voiceInterval) { clearInterval(voiceInterval); STATE.voiceActive = false; } if(audioContext) audioContext.close(); STATE.route='menu'; updateUI();" class="text-slate-500 hover:text-red-400 transition-colors p-2" title="Salir al Menú">${Icons.LogOut}</button>
                 </div>
-                <div class="relative cursor-pointer" onclick="STATE.viewingProfileId='${STATE.myProfile.id}'; STATE.giftTargetId=null; renderModal();">
-                    <div class="text-3xl bg-slate-950 rounded-full w-12 h-12 flex items-center justify-center border border-slate-800 hover:border-emerald-500/50 transition-colors z-10 relative ${STATE.localSpeaking ? 'bg-emerald-900/40' : ''}">${STATE.myProfile.avatar}</div>
-                    ${STATE.localSpeaking ? `<div class="absolute inset-0 speaking-ring border-emerald-500"></div>` : ''}
-                </div>
-                <button onclick="if(voiceInterval) { clearInterval(voiceInterval); STATE.voiceActive = false; } if(audioContext) audioContext.close(); STATE.route='menu'; updateUI();" class="text-slate-500 hover:text-red-400 transition-colors p-2" title="Salir al Menú">${Icons.LogOut}</button>
+            </nav>
+
+            <div id="tab-content" class="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 relative">
+                <!-- Skeletons go here -->
             </div>
-        </nav>
-
-        <div id="tab-content" class="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 relative">
-            <!-- Skeletons go here -->
-        </div>
-
+        </main>
+        
         <!-- MOBILE BOTTOM NAV -->
         <div class="md:hidden fixed bottom-0 left-0 w-full bg-slate-950 border-t border-slate-800 flex overflow-x-auto hide-scrollbar gap-2 p-3 z-50 shadow-[0_-10px_20px_rgba(0,0,0,0.5)]">
            <button onclick="switchTab('market');" class="flex-1 min-w-[60px] flex flex-col items-center gap-1 ${STATE.activeTab==='market'?'text-emerald-400':'text-slate-500'}">${Icons.Chart}<span class="text-[10px] font-bold uppercase">Mercado</span></button>
@@ -1100,28 +1131,27 @@ function ViewGame() {
            <button onclick="switchTab('charity');" class="flex-1 min-w-[60px] flex flex-col items-center gap-1 ${STATE.activeTab==='charity'?'text-pink-500':'text-slate-500'}">${Icons.Heart}<span class="text-[10px] font-bold uppercase">Ayuda</span></button>
            <button onclick="switchTab('chat');" class="flex-1 min-w-[60px] flex flex-col items-center gap-1 ${STATE.activeTab==='chat'?'text-emerald-400':'text-slate-500'}">${Icons.Message}<span class="text-[10px] font-bold uppercase">Chat</span></button>
         </div>
-    </main>`;
+    </div>`;
 }
 
 // ---------------- SKELETONS Y PARTIALS DINÁMICOS ----------------
 
-// --- MERCADO ---
 function RenderMarketSkeleton() {
     return `
     <div class="space-y-6 animate-fade-in max-w-7xl mx-auto">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <h1 class="text-3xl font-black text-white tracking-tight">Mercado en Vivo</h1>
-            <div class="flex flex-wrap w-full md:w-auto gap-3">
-                <select id="market-filter" onchange="STATE.marketFilter=this.value; requestUIRender();" class="bg-slate-900 border border-slate-800 rounded-xl px-3 py-3 text-sm font-bold text-white focus:border-emerald-500 outline-none cursor-pointer">
+            <div class="flex flex-col sm:flex-row w-full md:w-auto gap-3">
+                <select id="market-filter" onchange="STATE.marketFilter=this.value; requestUIRender();" class="w-full sm:w-auto bg-slate-900 border border-slate-800 rounded-xl px-3 py-3 text-sm font-bold text-white focus:border-emerald-500 outline-none cursor-pointer">
                     <option value="all" ${STATE.marketFilter === 'all' ? 'selected' : ''}>Todos</option>
                     <option value="human" ${STATE.marketFilter === 'human' ? 'selected' : ''}>Humanos</option>
                     <option value="bot" ${STATE.marketFilter === 'bot' ? 'selected' : ''}>Bots</option>
                 </select>
-                <div class="relative flex-1 md:w-64">
+                <div class="relative flex-1 w-full sm:w-64">
                     <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">${Icons.Search}</span>
                     <input id="input-search" type="text" placeholder="Buscar token..." value="${STATE.searchQuery}" oninput="STATE.searchQuery = this.value; requestUIRender();" class="w-full bg-slate-900 border border-slate-800 rounded-xl pl-12 pr-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors shadow-inner" />
                 </div>
-                <button onclick="switchTab('launch');" class="w-full md:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-6 py-3 rounded-xl flex items-center justify-center gap-2 whitespace-nowrap shadow-[0_0_20px_rgba(16,185,129,0.2)] transition-all">${Icons.Rocket} <span>Crear Token</span></button>
+                <button onclick="switchTab('launch');" class="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-6 py-3 rounded-xl flex items-center justify-center gap-2 whitespace-nowrap shadow-[0_0_20px_rgba(16,185,129,0.2)] transition-all">${Icons.Rocket} <span>Crear Token</span></button>
             </div>
         </div>
         <div id="market-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
@@ -1175,7 +1205,6 @@ function UpdateMarketDynamic() {
     }).join('');
 }
 
-// --- TOKEN DETAIL ---
 function RenderTokenDetailSkeleton() {
     const token = STATE.tokens[STATE.selectedTokenId];
     if (!token) { STATE.selectedTokenId = null; STATE.activeTab='market'; return RenderMarketSkeleton(); }
@@ -1194,8 +1223,8 @@ function RenderTokenDetailSkeleton() {
                 <div class="flex justify-between items-start md:items-end mb-6 flex-wrap gap-4">
                     <div class="flex gap-4 items-center w-full md:w-auto">
                         <div class="shrink-0">${imgHTML}</div>
-                        <div>
-                            <h1 class="text-2xl md:text-4xl font-black text-white tracking-tight mb-2">${token.name} <span class="text-emerald-400 text-lg md:text-xl bg-emerald-500/10 px-3 py-1 rounded-xl ml-1 font-mono border border-emerald-500/20">$${token.ticker}</span></h1>
+                        <div class="flex-1 min-w-0 pr-2">
+                            <h1 class="text-2xl md:text-4xl font-black text-white tracking-tight mb-2 truncate">${token.name} <span class="text-emerald-400 text-lg md:text-xl bg-emerald-500/10 px-3 py-1 rounded-xl ml-1 font-mono border border-emerald-500/20">$${token.ticker}</span></h1>
                             <div class="flex flex-wrap items-center gap-3 text-xs md:text-sm font-bold text-slate-400">
                                 <span class="flex items-center gap-1.5 cursor-pointer hover:text-white transition-colors" onclick="STATE.viewingProfileId='${token.creatorId}'; STATE.giftTargetId=null; renderModal();">
                                     Dev: <span class="underline">${token.creatorName}</span>
@@ -1225,7 +1254,7 @@ function RenderTokenDetailSkeleton() {
                     </div>
                 </div>
 
-                <div class="w-full flex-1 bg-[#020617] border border-slate-800 rounded-2xl overflow-hidden relative shadow-inner" id="tok-chart">
+                <div class="w-full flex-1 bg-[#020617] border border-slate-800 rounded-2xl overflow-hidden relative shadow-inner min-h-[200px]" id="tok-chart">
                     <!-- Chart Dynamic -->
                 </div>
             </div>
@@ -1364,18 +1393,18 @@ function RenderLeaderboardSkeleton() {
                 <h2 class="text-3xl font-black text-white tracking-tight">Top Degens</h2>
                 <p class="text-sm text-slate-500 mt-1">Los mejores traders de la red (Límite visual 100).</p>
             </div>
-            <div class="flex gap-2 bg-slate-900 p-1.5 rounded-xl border border-slate-800">
-                <select id="sel-lb-filter" onchange="STATE.lbFilter=this.value; requestUIRender();" class="bg-slate-950 border-none rounded-lg px-3 py-2 text-xs font-bold text-slate-300 focus:ring-0 cursor-pointer outline-none">
+            <div class="flex flex-wrap w-full md:w-auto gap-2 bg-slate-900 p-1.5 rounded-xl border border-slate-800">
+                <select id="sel-lb-filter" onchange="STATE.lbFilter=this.value; requestUIRender();" class="flex-1 bg-slate-950 border-none rounded-lg px-3 py-2 text-xs font-bold text-slate-300 focus:ring-0 cursor-pointer outline-none">
                     <option value="all" ${STATE.lbFilter==='all'?'selected':''}>Todos</option>
                     <option value="humans" ${STATE.lbFilter==='humans'?'selected':''}>Humanos</option>
                     <option value="bots" ${STATE.lbFilter==='bots'?'selected':''}>Bots</option>
                 </select>
-                <div class="w-px bg-slate-800 my-1"></div>
-                <select id="sel-lb-sort" onchange="STATE.lbSort=this.value; requestUIRender();" class="bg-slate-950 border-none rounded-lg px-3 py-2 text-xs font-bold text-slate-300 focus:ring-0 cursor-pointer outline-none">
+                <div class="w-px bg-slate-800 my-1 hidden sm:block"></div>
+                <select id="sel-lb-sort" onchange="STATE.lbSort=this.value; requestUIRender();" class="flex-1 bg-slate-950 border-none rounded-lg px-3 py-2 text-xs font-bold text-slate-300 focus:ring-0 cursor-pointer outline-none">
                     <option value="balance" ${STATE.lbSort==='balance'?'selected':''}>💰 Dinero</option>
                     <option value="reputation" ${STATE.lbSort==='reputation'?'selected':''}>🛡️ Reputación</option>
                 </select>
-                ${STATE.roomConfig.isHost ? `<button onclick="dispatchAction('ACTION_ADD_BOT')" class="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 text-xs px-4 py-2 rounded-lg font-black transition-colors">+ Add Bot</button>` : ''}
+                ${STATE.roomConfig.isHost ? `<button onclick="dispatchAction('ACTION_ADD_BOT')" class="w-full sm:w-auto bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 text-xs px-4 py-2 rounded-lg font-black transition-colors">+ Add Bot</button>` : ''}
             </div>
         </div>
         <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl" id="lb-grid">
@@ -1427,13 +1456,13 @@ function UpdateLeaderboardDynamic() {
                     <div class="flex items-center gap-3 font-bold text-white cursor-pointer" onclick="STATE.viewingProfileId='${p.id}'; STATE.giftTargetId=null; renderModal();">
                         <span class="text-slate-500 font-mono text-xs">#${i+1}</span>
                         <div class="relative"><span class="text-3xl">${p.avatar}</span>${p.isSpeaking ? `<div class="absolute inset-0 speaking-ring border-emerald-500"></div>` : ''}</div>
-                        <span class="text-base">${p.name}</span>
+                        <span class="text-base truncate max-w-[120px]">${p.name}</span>
                     </div>
                     <div class="font-mono font-bold text-emerald-400 text-base">${formatSOL(p.solBalance)}</div>
                 </div>
                 <div class="flex justify-between items-center text-xs mt-1">
                     <div class="flex items-center gap-3 cursor-pointer" onclick="STATE.viewingProfileId='${p.id}'; STATE.giftTargetId=null; renderModal();">
-                        ${p.isBot ? `<span class="text-[10px] font-black text-purple-400 bg-purple-500/10 px-2 py-1 rounded uppercase tracking-wider">BOT: ${p.strategy}</span>` : `<span class="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded uppercase tracking-wider">HUMANO</span>`}
+                        ${p.isBot ? `<span class="text-[10px] font-black text-purple-400 bg-purple-500/10 px-2 py-1 rounded uppercase tracking-wider">BOT</span>` : `<span class="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded uppercase tracking-wider">HUMANO</span>`}
                         <span class="flex items-center gap-1.5 font-bold text-slate-300"><span class="text-slate-600">${Icons.Shield}</span> <span class="${p.reputation > 70 ? 'text-emerald-400' : p.reputation < 30 ? 'text-red-400' : 'text-yellow-400'}">${p.reputation}</span></span>
                     </div>
                     <div class="flex items-center gap-3">
@@ -1470,12 +1499,12 @@ function UpdateStreamsDynamic() {
                 <div class="absolute top-3 right-3 bg-slate-900/80 text-white text-[10px] font-mono px-2 py-1 rounded border border-slate-700">👁️ ${Math.floor(Math.random()*5000 + 100)} viewers</div>
                 <div class="text-7xl group-hover:scale-110 transition-transform">${s.avatar}</div>
             </div>
-            <div class="p-5 flex justify-between items-center bg-slate-900">
+            <div class="p-5 flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center bg-slate-900">
                 <div>
                     <div class="font-black text-white text-lg flex items-center gap-2">${s.name} <span class="text-xs bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded font-mono uppercase tracking-widest">Bot</span></div>
                     <div class="text-xs text-slate-500 mt-1">Haciendo trading e ignorando rugs.</div>
                 </div>
-                <button onclick="dispatchAction('ACTION_CHAT', {msg: 'Enviando TTS a ${s.name}: LFG bro!'}); addToast('TTS Donado a ${s.name}','💸');" class="bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/40 px-4 py-2.5 rounded-lg text-xs font-bold transition-colors uppercase tracking-wider">Donar TTS</button>
+                <button onclick="dispatchAction('ACTION_CHAT', {msg: 'Enviando TTS a ${s.name}: LFG bro!'}); addToast('TTS Donado a ${s.name}','💸');" class="w-full sm:w-auto bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/40 px-4 py-3 rounded-lg text-xs font-bold transition-colors uppercase tracking-wider text-center">Donar TTS</button>
             </div>
         </div>`).join('');
 }
@@ -1510,7 +1539,7 @@ function RenderLaunch() {
     const me = STATE.players[STATE.myProfile.id];
     const maxDevBuy = Math.max(0, me.solBalance - 1);
     return `
-    <div class="max-w-lg mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl animate-fade-in mt-4 md:mt-10">
+    <div class="max-w-lg mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl animate-fade-in mt-4 md:mt-10">
         <h2 class="text-2xl font-black text-white mb-2 flex items-center gap-3">${Icons.Rocket} Desplegar Token</h2>
         <p class="text-xs text-slate-500 mb-8 font-bold uppercase tracking-wider leading-relaxed">El token inicia con curva Pump.fun (20 SOL virtuales). Ganas reputación por volumen.</p>
         <form id="launch-form" onsubmit="event.preventDefault(); const n=document.getElementById('l-name').value; const t=document.getElementById('l-ticker').value; const i=document.getElementById('l-image')?.value || STATE.launchData.image; const d=parseFloat(document.getElementById('l-devbuy').value)||0; if(n&&t){dispatchAction('ACTION_LAUNCH', {name:n, ticker:t, image:i, devBuy:d}); STATE.launchData.image=''; switchTab('market');}" class="space-y-5">
@@ -1518,7 +1547,7 @@ function RenderLaunch() {
                 <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Nombre del Proyecto</label>
                 <input id="l-name" placeholder="Ej: Solana Doge" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3.5 text-white focus:border-emerald-500 outline-none font-bold transition-colors" />
             </div>
-            <div class="grid grid-cols-2 gap-4">
+            <div class="flex flex-col sm:grid sm:grid-cols-2 gap-4">
                 <div>
                     <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block">Ticker</label>
                     <input id="l-ticker" maxlength="6" placeholder="Ej: SDOGE" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3.5 text-white focus:border-emerald-500 outline-none uppercase font-black tracking-widest transition-colors" />
@@ -1546,9 +1575,9 @@ function RenderLaunch() {
                 <div class="flex justify-between font-bold text-slate-400 uppercase tracking-wider"><span>Costo de Red (Fijo):</span><span class="font-mono text-white">1.00 SOL</span></div>
                 <div class="flex justify-between font-black text-emerald-400 pt-3 border-t border-slate-800/50 mt-3 uppercase tracking-wider"><span>Total Mínimo a Pagar:</span><span class="font-mono">1.00 SOL</span></div>
             </div>
-            <div class="flex gap-3 pt-4">
-                <button type="submit" class="flex-1 bg-emerald-500 text-slate-950 font-black py-4 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:bg-emerald-400 transition-all text-base tracking-widest uppercase">Lanzar Token</button>
-                <button type="button" onclick="switchTab('market');" class="px-6 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-700 transition-colors uppercase tracking-widest text-xs">Cancelar</button>
+            <div class="flex flex-col sm:flex-row gap-3 pt-4">
+                <button type="submit" class="w-full sm:flex-1 bg-emerald-500 text-slate-950 font-black py-4 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:bg-emerald-400 transition-all text-base tracking-widest uppercase order-1 sm:order-2">Lanzar Token</button>
+                <button type="button" onclick="switchTab('market');" class="w-full sm:w-auto px-6 bg-slate-800 text-white font-bold py-4 sm:py-0 rounded-xl hover:bg-slate-700 transition-colors uppercase tracking-widest text-xs order-2 sm:order-1">Cancelar</button>
             </div>
         </form>
     </div>`;
@@ -1556,11 +1585,11 @@ function RenderLaunch() {
 
 function RenderCharity() {
     return `
-    <div class="max-w-4xl mx-auto space-y-6 animate-fade-in text-center pt-10">
+    <div class="max-w-4xl mx-auto space-y-6 animate-fade-in text-center pt-10 px-4">
         <div class="text-6xl mb-4 animate-pulse">💖</div>
         <h1 class="text-4xl font-black text-white">Beneficencia Degen</h1>
         <p class="text-slate-400 text-sm max-w-lg mx-auto">Dona tus ganancias en SOL a causas benéficas reales. Pierdes liquidez, pero ganas Reputación masivamente entre los degens. El karma existe.</p>
-        <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl max-w-sm mx-auto shadow-xl mt-8">
+        <div class="bg-slate-900 border border-slate-800 p-6 md:p-8 rounded-3xl max-w-sm mx-auto shadow-xl mt-8">
             <input id="charity-amount" type="number" placeholder="Monto en SOL" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-4 text-pink-500 font-mono text-2xl text-center mb-4 focus:border-pink-500 outline-none transition-colors"/>
             <button onclick="const amt = parseFloat(document.getElementById('charity-amount').value); if(amt>0) { dispatchAction('ACTION_CHARITY', { amount: amt }); switchTab('market'); addToast('Donación enviada!', '💖'); }" class="w-full bg-pink-600 hover:bg-pink-500 text-white font-black py-4 rounded-xl shadow-[0_0_20px_rgba(219,39,119,0.4)] transition-all uppercase tracking-widest">Donar y Subir Reputación</button>
         </div>
@@ -1631,7 +1660,7 @@ function renderModal() {
     }).join('');
 
     mc.innerHTML = `
-    <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl max-w-sm w-full relative shadow-2xl animate-fade-in">
+    <div class="bg-slate-900 border border-slate-800 p-6 md:p-8 rounded-3xl max-w-sm w-full relative shadow-2xl animate-fade-in my-auto">
         <button onclick="STATE.viewingProfileId=null; STATE.giftTargetId=null; document.getElementById('modal-container').classList.add('hidden');" class="absolute top-5 right-5 text-slate-500 hover:text-white bg-slate-800 rounded-full w-8 h-8 flex items-center justify-center transition-colors">✕</button>
         <div class="text-center mb-6">
             <div class="text-6xl mb-3 relative inline-block">
@@ -1656,7 +1685,7 @@ function renderModal() {
         </div>
 
         ${p.luxuries && p.luxuries.length > 0 ? `
-        <div class="mb-6 text-center text-2xl bg-slate-950 py-3 rounded-2xl border border-slate-800 shadow-inner tracking-widest">
+        <div class="mb-6 text-center text-2xl bg-slate-950 py-3 rounded-2xl border border-slate-800 shadow-inner tracking-widest flex flex-wrap justify-center gap-1">
             ${p.luxuries.join(' ')}
         </div>` : ''}
 
@@ -1680,16 +1709,16 @@ function renderGiftModal() {
     const p = STATE.players[STATE.giftTargetId];
     
     mc.innerHTML = `
-    <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl max-w-sm w-full shadow-2xl animate-fade-in">
+    <div class="bg-slate-900 border border-slate-800 p-6 md:p-8 rounded-3xl max-w-sm w-full shadow-2xl animate-fade-in my-auto">
         <h3 class="text-2xl font-black text-white mb-2 flex items-center gap-3">${Icons.Gift} Donación</h3>
         <div class="text-sm text-slate-500 mb-6">Enviando SOL a <span class="font-bold text-white">${p.name}</span>. Esto mejorará tu reputación.</div>
         
         <label class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 block">Monto en SOL</label>
         <input id="g-amount" type="number" placeholder="0.00" value="${STATE.giftAmount}" oninput="STATE.giftAmount = this.value" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-4 text-emerald-400 font-mono text-xl focus:outline-none focus:border-emerald-500 mb-6 transition-colors" />
         
-        <div class="flex gap-3">
-            <button onclick="const a=parseFloat(STATE.giftAmount); if(a>0){ dispatchAction('ACTION_GIFT', {to:'${STATE.giftTargetId}', asset:'SOL', amount:a}); STATE.giftTargetId=null; STATE.giftAmount=''; document.getElementById('modal-container').classList.add('hidden'); }" class="flex-1 bg-emerald-500 text-slate-950 font-black py-3.5 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:bg-emerald-400 transition-all uppercase tracking-wider text-sm">Enviar</button>
-            <button onclick="STATE.viewingProfileId=null; STATE.giftTargetId=null; document.getElementById('modal-container').classList.add('hidden');" class="px-6 bg-slate-800 text-white font-bold py-3.5 rounded-xl hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm">Cancelar</button>
+        <div class="flex flex-col sm:flex-row gap-3">
+            <button onclick="const a=parseFloat(STATE.giftAmount); if(a>0){ dispatchAction('ACTION_GIFT', {to:'${STATE.giftTargetId}', asset:'SOL', amount:a}); STATE.giftTargetId=null; STATE.giftAmount=''; document.getElementById('modal-container').classList.add('hidden'); }" class="flex-1 bg-emerald-500 text-slate-950 font-black py-4 sm:py-3.5 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:bg-emerald-400 transition-all uppercase tracking-wider text-sm order-1 sm:order-2">Enviar</button>
+            <button onclick="STATE.viewingProfileId=null; STATE.giftTargetId=null; document.getElementById('modal-container').classList.add('hidden');" class="w-full sm:w-auto px-6 bg-slate-800 text-white font-bold py-4 sm:py-3.5 rounded-xl hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm order-2 sm:order-1">Cancelar</button>
         </div>
     </div>`;
     mc.classList.remove('hidden');
