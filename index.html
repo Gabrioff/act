@@ -43,7 +43,7 @@
 // ==========================================
 const Icons = {
     Users: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
-    Settings: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1-1-1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`,
+    Settings: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`,
     Chart: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
     Message: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>`,
     LogOut: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>`,
@@ -113,7 +113,7 @@ const calcSolOut = (tokensIn, solPool, tokenPool) => solPool - ((solPool * token
 // ==========================================
 let STATE = {
     route: 'profile', 
-    pendingRoomCode: null, // Para auto-unirse mediante Link
+    pendingRoomCode: null,
     myProfile: { id: generateId(), name: '', avatar: '👽', isBot: false, reputation: 1, luxuries: [], isSpeaking: false, peerId: null },
     roomConfig: { code: '', maxPlayers: 550, isHost: false, isOffline: false, botsEnabled: true, botCount: 30 },
     players: {},
@@ -132,7 +132,7 @@ let STATE = {
     viewingProfileId: null, 
     trackedIds: new Set(),
     giftTargetId: null,
-    netLogs: [], // Historial de terminal
+    netLogs: [], 
 
     tradeType: 'buy',
     tradeAmount: '',
@@ -142,7 +142,7 @@ let STATE = {
     
     voiceActive: false,
     localSpeaking: false,
-    _renderedTabId: null // Control de DOM diffing
+    _renderedTabId: null 
 };
 
 // WebRTC (PeerJS) variables
@@ -169,7 +169,7 @@ function tLog(msg, color='text-emerald-400') {
         consoleEl.innerHTML = STATE.netLogs.join('<br>');
         consoleEl.scrollTop = consoleEl.scrollHeight;
     }
-    console.log(`[P2P] ${msg}`); // También a la consola del navegador
+    console.log(`[P2P] ${msg}`); 
 }
 
 // ==========================================
@@ -347,32 +347,19 @@ async function toggleVoice() {
 }
 
 // ==========================================
-// SISTEMA DE RED (P2P WEBRTC CON STUN/TURN DE EMERGENCIA)
+// SISTEMA DE RED (P2P WEBRTC CON STUN MASIVO, SIN TURN ROTO)
 // ==========================================
 
-// Usamos servidores STUN gratuitos de Google para descubrir IPs públicas.
-// Añadimos un servidor TURN público y gratuito de Metered (OpenRelay) para atravesar NATs Simétricos (Redes 4G/5G y Routers Corporativos).
+// Usamos servidores STUN gratuitos de Google, Mozilla, Twilio y Cloudflare para máxima perforación NAT.
+// Eliminamos TURN (metered.ca) porque las implementaciones gratuitas fallan y bloquean la fallback de WebRTC.
 const WEBRTC_CONFIG = {
     config: {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
-            // Servidor TURN PÚBLICO para Atravesar Redes de Celular
-            {
-                urls: "turn:openrelay.metered.ca:80",
-                username: "openrelayproject",
-                credential: "openrelayproject"
-            },
-            {
-                urls: "turn:openrelay.metered.ca:443",
-                username: "openrelayproject",
-                credential: "openrelayproject"
-            },
-            {
-                urls: "turn:openrelay.metered.ca:443?transport=tcp",
-                username: "openrelayproject",
-                credential: "openrelayproject"
-            }
+            { urls: 'stun:stun.services.mozilla.com' },
+            { urls: 'stun:global.stun.twilio.com:3478' },
+            { urls: 'stun:stun.cloudflare.com:3478' }
         ]
     }
 };
@@ -433,7 +420,7 @@ function initNetwork(roomId, mode, customBotCount = 20) {
             peer.on('open', (id) => {
                 STATE.myProfile.peerId = id;
                 if (STATE.players[STATE.myProfile.id]) STATE.players[STATE.myProfile.id].peerId = id;
-                tLog(`✓ Servidor STUN/TURN Listo. Código WebRTC: ${id}`, "text-emerald-400");
+                tLog(`✓ Servidor STUN Listo. Código WebRTC: ${id}`, "text-emerald-400");
                 addToast(`Sala P2P Servidor Online: ${roomId}`, '🌐');
             });
 
@@ -479,27 +466,42 @@ function initNetwork(roomId, mode, customBotCount = 20) {
                 tLog(`✓ Red lista. Local ID: ${id.substring(0,6)}... Buscando Host: ${roomId}`, "text-emerald-400");
                 addToast("Perforando red hacia el Host...", '⏳');
                 
-                // Conectando al Host (Usando modo reliable para mejor estabilidad a distancia)
-                clientConn = peer.connect(`degen-p2p-sim-${roomId}`, { reliable: true });
+                // Conectando al Host (Sin 'reliable: true' para no forzar fallbacks problemáticos en móvil)
+                clientConn = peer.connect(`degen-p2p-sim-${roomId}`, { serialization: 'json' });
                 
                 clientConn.peerConnection.oniceconnectionstatechange = function() {
                     const state = clientConn.peerConnection.iceConnectionState;
                     tLog(`> ICE (Perforación NAT): ${state}`, state === 'connected' ? 'text-emerald-400' : 'text-yellow-400');
+                    if (state === 'disconnected' || state === 'failed') {
+                        tLog(`[!] Intentando reestablecer ruta P2P automáticamente...`, 'text-orange-400');
+                    }
                 };
                 
                 clientConn.on('open', () => {
-                    tLog(`[+] ¡WebRTC Establecido! Handshake con DB del Host...`, "text-emerald-500 font-bold");
+                    tLog(`[+] ¡WebRTC Establecido! Solicitando entrada a DB...`, "text-emerald-500 font-bold");
                     clientConn.send({ type: 'JOIN_REQ', payload: STATE.myProfile });
                     addToast("¡Conectado al Host Exitosamente!", '✅');
+                    
+                    // Failsafe: Si no nos responde el host rápido, reintentamos la petición
+                    setTimeout(() => {
+                        if(Object.keys(STATE.players).length <= 1) {
+                            tLog(`[!] Host tardando en sincronizar. Re-solicitando...`, "text-orange-400");
+                            clientConn.send({ type: 'JOIN_REQ', payload: STATE.myProfile });
+                        }
+                    }, 2500);
                 });
                 
                 clientConn.on('data', (data) => processMessageAsClient(data));
                 
                 clientConn.on('close', () => {
-                    tLog(`[-] El Host ha cerrado la conexión P2P.`, "text-red-500");
-                    alert("Desconectado del Host.");
-                    STATE.route = 'menu';
-                    requestUIRender(true);
+                    tLog(`[-] El Host ha cerrado la conexión P2P o la red colapsó.`, "text-red-500");
+                    addToast("Conexión perdida. Reconectando...", "⚠️");
+                    setTimeout(() => {
+                        if(STATE.route === 'lobby' || STATE.route === 'game') {
+                            tLog(`[!] Auto-Reconectando...`, "text-blue-400");
+                            initNetwork(roomId, 'client'); 
+                        }
+                    }, 3000);
                 });
             });
 
@@ -511,9 +513,9 @@ function initNetwork(roomId, mode, customBotCount = 20) {
             peer.on('error', (err) => {
                 tLog(`✗ Error P2P Fatal: ${err.type}`, "text-red-500");
                 if (err.type === 'peer-unavailable') {
-                    alert(`No se encontró el Host en el enlace/código: ${roomId}. Pídele a tu amigo que cree la sala primero.`);
+                    alert(`No se encontró el Host con el código: ${roomId}. Revisa el código o asegúrate de que el host sigue en la pestaña.`);
                 } else if (err.type === 'network' || err.type === 'webrtc') {
-                    alert(`La red está bloqueando la conexión P2P (Symmetric NAT no franqueable). Se intentó usar STUN/TURN pero falló. Cambia de Red Wi-Fi a Datos o viceversa.`);
+                    alert(`Tu red bloquea conexiones P2P directas (NAT Estricto). Intenta cambiar de Wi-Fi a Datos Móviles o viceversa.`);
                 } else {
                     alert("Error P2P: " + err.type);
                 }
@@ -595,6 +597,7 @@ function processMessageAsClient(data) {
         requestUIRender(true);
     }
     if (type === 'EVENT_ALERT') {
+        // En cliente, solo mostramos si trackeamos al que lanza el token
         if (STATE.trackedIds.has(senderId)) addToast(payload.msg, payload.icon);
     }
 }
