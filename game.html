@@ -471,12 +471,18 @@ function initNetwork(roomId, mode, customBotCount = 20) {
             const joinPacket = { type: 'JOIN_REQ', payload: { ...STATE.myProfile, x: pos.x, y: pos.y, speed: 2, mountedId: null }, senderId: STATE.myProfile.id };
             mqttClient.publish(`dgn/${roomId}/in`, JSON.stringify(joinPacket));
             addToast("Buscando al Host...", '⏳');
-            setTimeout(() => {
+            
+            if(window.handshakeInterval) clearInterval(window.handshakeInterval);
+            window.handshakeInterval = setInterval(() => {
                 if(Object.keys(STATE.players).length <= 1) {
-                    tLog(`[!] Host tardando. Re-enviando Handshake...`, "text-orange-400");
+                    tLog(`[!] Intentando conectar (Host ocupado o de lejos)...`, "text-orange-400");
                     mqttClient.publish(`dgn/${roomId}/in`, JSON.stringify(joinPacket));
                 } else {
-                    if(STATE.roomConfig.hasMap) startWorldEngine();
+                    clearInterval(window.handshakeInterval);
+                    if(STATE.roomConfig.hasMap && !window.worldEngineStarted) {
+                        window.worldEngineStarted = true;
+                        startWorldEngine();
+                    }
                 }
             }, 3000);
         }
@@ -498,7 +504,7 @@ function initNetwork(roomId, mode, customBotCount = 20) {
         }
     });
 
-    // WEBRTC VOZ
+    // WEBRTC VOZ Y P2P DATA
     try {
         if (mode === 'host') {
             peer = new Peer(`dgn-voice-${roomId}`, WEBRTC_CONFIG);
@@ -509,7 +515,14 @@ function initNetwork(roomId, mode, customBotCount = 20) {
             });
             peer.on('connection', (conn) => {
                 conn.on('data', (data) => {
-                    if (data.senderId) window.clientConns[data.senderId] = conn;
+                    if (data.senderId) {
+                        window.clientConns[data.senderId] = conn;
+                        // Si es un saludo inicial P2P, le enviamos el mapa pesado directo
+                        if (data.type === 'P2P_HELLO') {
+                            conn.send({ type: 'STATE_SYNC', payload: { players: STATE.players, tokens: STATE.tokens, chat: STATE.chat, gameState: STATE.gameState, worldMap: STATE.worldMap } });
+                            return;
+                        }
+                    }
                     if (data.type === 'PING') { conn.send({ type: 'PONG', target: data.senderId, time: data.time }); return; }
                     processMessageAsHost(data);
                 });
@@ -542,12 +555,6 @@ function initNetwork(roomId, mode, customBotCount = 20) {
 }
 
 // ---------------- EVENTOS DEL SISTEMA ----------------
-function startSystemEvents() {
-    if (!STATE.roomConfig.isHost) return;
-    
-    if (newsInterval) clearInterval(newsInterval);
-    newsInterval = setInterval(() => {
-        if (STATE.gameState !== 'playing' || !STATE.roomConfig.botsEnabled) return;
         const tKeys = Object.keys(STATE.tokens);
         if (tKeys.length === 0 || Math.random() > 0.4) return; 
         
@@ -730,7 +737,7 @@ function processMessageAsClient(data) {
                 }
             }
         }
-        return; 
+        return; // No requerimos render de UI completo para esto
     }
     
     if (type === 'ROOM_CONFIG' && target === STATE.myProfile.id) {
@@ -744,7 +751,11 @@ function processMessageAsClient(data) {
         if (payload.hostPeerId && (!window.dataConn || !window.dataConn.open)) {
             try {
                 window.dataConn = peer.connect(payload.hostPeerId);
-                window.dataConn.on('open', () => { tLog("⚡ Conexión P2P Directa (Latencia Ultra Baja)", "text-cyan-400"); });
+                window.dataConn.on('open', () => { 
+                    tLog("⚡ Conexión P2P Directa Establecida", "text-cyan-400"); 
+                    // Obligar a WebRTC a mandar un saludo para registrarnos y recibir el mapa
+                    window.dataConn.send({ type: 'P2P_HELLO', senderId: STATE.myProfile.id });
+                });
                 window.dataConn.on('data', (data) => processMessageAsClient(data));
             } catch(e) {}
         }
@@ -759,7 +770,7 @@ function processMessageAsClient(data) {
         STATE.tokens = payload.tokens; 
         STATE.gameState = payload.gameState; 
         STATE.chat = payload.chat;
-        STATE.worldMap = payload.worldMap; 
+        if (payload.worldMap) STATE.worldMap = payload.worldMap; // Solo actualizar mapa si el paquete lo incluye
         
         if (STATE.players[STATE.myProfile.id] && myLocalX !== undefined) {
             STATE.players[STATE.myProfile.id].x = myLocalX;
@@ -781,15 +792,19 @@ function processMessageAsClient(data) {
 
 function broadcastState() {
     if (STATE.roomConfig.isHost) {
+        const syncPayload = { players: STATE.players, tokens: STATE.tokens, chat: STATE.chat, gameState: STATE.gameState };
+
+        // MQTT (Paquete Ligero: Omitimos el mapa para evitar que el servidor global lo bloquee)
         if (!STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
-            const msg = { type: 'STATE_SYNC', payload: { players: STATE.players, tokens: STATE.tokens, chat: STATE.chat, gameState: STATE.gameState, worldMap: STATE.worldMap } };
+            const msg = { type: 'STATE_SYNC', payload: syncPayload };
             mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify(msg));
         }
-        // Emitir a todos por vía ultra rápida P2P
+        
+        // P2P Ultra Rápido (Paquete Completo: Enviamos el mapa sin límites de tamaño)
         if (window.clientConns) {
-            const msgObj = { type: 'STATE_SYNC', payload: { players: STATE.players, tokens: STATE.tokens, chat: STATE.chat, gameState: STATE.gameState, worldMap: STATE.worldMap } };
+            const msgObjFull = { type: 'STATE_SYNC', payload: { ...syncPayload, worldMap: STATE.worldMap } };
             Object.values(window.clientConns).forEach(c => {
-                if(c.open) c.send(msgObj);
+                if(c.open) c.send(msgObjFull);
             });
         }
         requestUIRender(); 
