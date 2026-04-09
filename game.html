@@ -555,6 +555,12 @@ function initNetwork(roomId, mode, customBotCount = 20) {
 }
 
 // ---------------- EVENTOS DEL SISTEMA ----------------
+function startSystemEvents() {
+    if (!STATE.roomConfig.isHost) return;
+    
+    if (newsInterval) clearInterval(newsInterval);
+    newsInterval = setInterval(() => {
+        if (STATE.gameState !== 'playing' || !STATE.roomConfig.botsEnabled) return;
         const tKeys = Object.keys(STATE.tokens);
         if (tKeys.length === 0 || Math.random() > 0.4) return; 
         
