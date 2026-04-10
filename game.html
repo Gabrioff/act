@@ -556,7 +556,8 @@ function startSystemEvents() {
         
         const randomTokenId = tKeys[Math.floor(Math.random() * tKeys.length)];
         const token = STATE.tokens[randomTokenId];
-        if ((token.solPool - VIRTUAL_USD_RESERVE) < 1) return; 
+        const vRes = token.virtualSol || VIRTUAL_USD_RESERVE;
+        if ((token.solPool - vRes) < 1) return; 
         
         const isFud = Math.random() > 0.6;
         let pText = '';
@@ -929,12 +930,14 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
     let postMsg = null;
     let posterSys = 'SYSTEM_MM';
     const mcapUsd = newPrice * token.initialSupply; 
-    const realLiq = token.solPool - VIRTUAL_USD_RESERVE;
+    const vRes = token.virtualSol || VIRTUAL_USD_RESERVE;
+    const cLim = token.curveLimit || BONDING_CURVE_LIMIT;
+    const realLiq = token.solPool - vRes;
+
     if (!token.milestones) token.milestones = {};
     const creator = STATE.players[token.creatorId];
 
-    // Ahora no lista automáticamente en Binance a los 10k, la barrera manual es de $10,000 requerida
-    if (realLiq >= BONDING_CURVE_LIMIT && !token.milestones.mRaydium) {
+    if (realLiq >= cLim && !token.milestones.mRaydium) {
         token.milestones.mRaydium = true; 
         milestoneMsg = `👑 $${token.ticker} COMPLETÓ LA CURVA Y SE FUE A RAYDIUM!`;
         postMsg = `Acabo de ver a $${token.ticker} tocar Raydium. El dev es un chad. Enhorabuena. 🔥`;
@@ -959,18 +962,23 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
 function handleLaunchHost(name, ticker, image, devBuy, playerId) {
     const player = STATE.players[playerId];
     const fee = 1; 
-    // Cap max devbuy to 1.5 USD to prevent massive immediate supply monopolization
-    const actualDevBuy = Math.min(devBuy, 1.5); 
+    const actualDevBuy = Math.max(0, devBuy); 
 
     if (!player || player.solBalance < (fee + actualDevBuy)) return;
 
     player.solBalance -= fee;
+    
+    // Logica AMM Realista: La inversión del dev añade a la liquidez virtual base (x3)
+    const vSol = VIRTUAL_USD_RESERVE + (actualDevBuy * 3);
+    const cLim = BONDING_CURVE_LIMIT + (actualDevBuy * 3);
+    const initialPrice = vSol / 1000000000; 
+    
     const tokenId = ticker.toUpperCase() + '_' + Date.now();
-    const initialPrice = VIRTUAL_USD_RESERVE / 1000000000; 
     
     STATE.tokens[tokenId] = {
         id: tokenId, name, ticker: ticker.toUpperCase(), image: image, creatorId: playerId, creatorName: player.name,
-        solPool: VIRTUAL_USD_RESERVE, tokenPool: 1000000000, initialSupply: 1000000000, createdAt: Date.now(),
+        solPool: vSol, tokenPool: 1000000000, initialSupply: 1000000000, createdAt: Date.now(),
+        virtualSol: vSol, curveLimit: cLim,
         milestones: {}, history: [], exchange: 'Pump.fun', accumulatedFees: 0, totalFeesEarned: 0,
         currentCandle: { time: Date.now(), open: initialPrice, high: initialPrice, low: initialPrice, close: initialPrice, vol: 0 }
     };
@@ -983,7 +991,11 @@ function handleLaunchHost(name, ticker, image, devBuy, playerId) {
     STATE.chat = STATE.chat.slice(0, 80);
     
     hostEmitAlert(playerId, logMsg, '🚀');
-    if (actualDevBuy > 0) handleTradeHost(tokenId, true, actualDevBuy, playerId, false);
+    
+    if (actualDevBuy > 0) {
+        handleTradeHost(tokenId, true, actualDevBuy, playerId, false);
+    }
+    
     broadcastState();
 }
 
@@ -1239,6 +1251,7 @@ function startBotBrain() {
             if (bot.solBalance > 0.5 && tokenKeys.length > 0 && Math.random() < 0.3) {
                 const attractiveTokens = tokenKeys.map(tid => STATE.tokens[tid]).filter(t => {
                     const ageMs = Date.now() - t.createdAt; const creatorRep = STATE.players[t.creatorId]?.reputation || 1;
+                    const vRes = t.virtualSol || VIRTUAL_USD_RESERVE;
                     
                     // Exchange factor
                     let exchMultiplier = 1.0;
@@ -1249,7 +1262,7 @@ function startBotBrain() {
                     // Millionaire logic: Strict risk control
                     if (bot.solBalance >= 1000000) {
                         // Only buy established coins with good liquidity or exchanges
-                        if (t.exchange === 'Pump.fun' && (t.solPool - VIRTUAL_USD_RESERVE) < 50) return false;
+                        if (t.exchange === 'Pump.fun' && (t.solPool - vRes) < 50) return false;
                         if (creatorRep < 50 && t.exchange === 'Pump.fun') return false;
                     }
 
@@ -1261,25 +1274,28 @@ function startBotBrain() {
                     const baseProb = 0.4;
                     if (Math.random() > (baseProb * hypeMulti)) return false; 
 
-                    if (bot.strategy === 'Scalper') return (t.solPool - VIRTUAL_USD_RESERVE) > 2; 
-                    if (bot.strategy === 'Hodler') return ageMs > 60000 && (t.solPool - VIRTUAL_USD_RESERVE) > 5;
+                    if (bot.strategy === 'Scalper') return (t.solPool - vRes) > 2; 
+                    if (bot.strategy === 'Hodler') return ageMs > 60000 && (t.solPool - vRes) > 5;
                     return true;
                 });
 
                 if (attractiveTokens.length > 0) {
                     const targetToken = attractiveTokens[Math.floor(Math.random() * attractiveTokens.length)];
+                    const vRes = targetToken.virtualSol || VIRTUAL_USD_RESERVE;
+                    const cLim = targetToken.curveLimit || BONDING_CURVE_LIMIT;
+                    
                     let investRatio = 0.1;
                     if (bot.strategy === 'Degen' || bot.strategy === 'Sniper' || bot.strategy === 'RugPuller' || bot.strategy === 'VolumeSniper') investRatio = 0.5; 
                     if (bot.strategy === 'Whale') investRatio = 0.2; 
                     if (bot.strategy === 'CopyTrader') investRatio = 0.3;
 
-                    // Smart Risk Control (Cap investments based on market depth)
+                    // Smart Risk Control (Cap investments based on dynamic market depth)
                     let maxSafeInvest = 5; // Default safe for pump.fun early curve
                     if (targetToken.exchange === 'Binance') maxSafeInvest = 2000;
                     else if (targetToken.exchange === 'KuCoin') maxSafeInvest = 1000;
                     else if (targetToken.exchange === 'CoinMarketCap') maxSafeInvest = 500;
-                    else if ((targetToken.solPool - VIRTUAL_USD_RESERVE) > BONDING_CURVE_LIMIT) maxSafeInvest = 200; // Raydium
-                    else maxSafeInvest = Math.max(5, (BONDING_CURVE_LIMIT - (targetToken.solPool - VIRTUAL_USD_RESERVE)) * 0.2); // Up to 20% of remaining curve
+                    else if ((targetToken.solPool - vRes) > cLim) maxSafeInvest = 200; // Raydium
+                    else maxSafeInvest = Math.max(5, (cLim - (targetToken.solPool - vRes)) * 0.2); // Up to 20% of remaining curve
                     
                     // Millionaires have strict max allocations to avoid breaking the AMM
                     if (bot.solBalance >= 1000000) {
@@ -1415,7 +1431,7 @@ function updateDynamicDOM() {
     const tickerEl = document.getElementById('trending-marquee');
     if (tickerEl) {
         const trends = Object.values(STATE.tokens).sort((a,b) => b.solPool - a.solPool).slice(0, 8);
-        if(trends.length > 0) tickerEl.innerHTML = trends.map(t => `<span class="mx-4">🔥 <span class="font-black text-white">$${t.ticker}</span> (${formatUSD(t.solPool - VIRTUAL_USD_RESERVE)})</span>`).join(' • ');
+        if(trends.length > 0) tickerEl.innerHTML = trends.map(t => `<span class="mx-4">🔥 <span class="font-black text-white">$${t.ticker}</span> (${formatUSD(t.solPool - (t.virtualSol || VIRTUAL_USD_RESERVE))})</span>`).join(' • ');
         else tickerEl.innerHTML = "EL MERCADO ESTÁ VACÍO. SÉ EL PRIMERO EN CREAR UN TOKEN.";
     }
     
@@ -1690,8 +1706,10 @@ function UpdateDevPanelDynamic() {
     let successfulTokens = 0;
 
     myTokens.forEach(t => {
+        const vRes = t.virtualSol || VIRTUAL_USD_RESERVE;
+        const cLim = t.curveLimit || BONDING_CURVE_LIMIT;
         totalFees += (t.totalFeesEarned || 0) + (t.accumulatedFees || 0);
-        const progress = Math.min(100, ((t.solPool - VIRTUAL_USD_RESERVE) / BONDING_CURVE_LIMIT) * 100);
+        const progress = Math.min(100, ((t.solPool - vRes) / cLim) * 100);
         if(progress >= 100) successfulTokens++;
     });
 
@@ -1843,7 +1861,9 @@ function UpdateMarketDynamic() {
     }
 
     grid.innerHTML = filtered.map(token => {
-        const progress = Math.min(100, ((token.solPool - VIRTUAL_USD_RESERVE) / BONDING_CURVE_LIMIT) * 100);
+        const vRes = token.virtualSol || VIRTUAL_USD_RESERVE;
+        const cLim = token.curveLimit || BONDING_CURVE_LIMIT;
+        const progress = Math.min(100, ((token.solPool - vRes) / cLim) * 100);
         const isComplete = progress >= 100;
         const currentPrice = getPrice(token.solPool, token.tokenPool);
         const mcap = currentPrice * token.initialSupply;
@@ -2236,6 +2256,8 @@ function UpdateTokenDetailDynamic() {
     const mcap = currentPrice * token.initialSupply; 
     const balTokens = me.portfolio[token.id] || 0;
     const isCex = token.exchange !== 'Pump.fun' && token.exchange !== 'Raydium';
+    const vRes = token.virtualSol || VIRTUAL_USD_RESERVE;
+    const cLim = token.curveLimit || BONDING_CURVE_LIMIT;
     
     const numAmt = parseFloat(document.getElementById('t-amount')?.value || STATE.tradeAmount) || 0;
     let estimated = 0;
@@ -2250,7 +2272,7 @@ function UpdateTokenDetailDynamic() {
         estimated = solVal - feeEst;
     }
 
-    const progress = Math.min(100, ((token.solPool - VIRTUAL_USD_RESERVE) / BONDING_CURVE_LIMIT) * 100);
+    const progress = Math.min(100, ((token.solPool - vRes) / cLim) * 100);
     const isComplete = progress >= 100;
 
     const dCex = document.getElementById('tok-cex-badge'); if(dCex) { if(isCex) { dCex.classList.remove('hidden'); dCex.innerText = token.exchange; } else dCex.classList.add('hidden'); }
@@ -2283,7 +2305,7 @@ function UpdateTokenDetailDynamic() {
     const tBal = document.getElementById('tok-bal-base'); if(tBal) tBal.innerText = STATE.tradeType==='buy'?formatUSD(me.solBalance):formatToken(balTokens);
     const eRec = document.getElementById('tok-est-rec'); if(eRec) eRec.innerText = STATE.tradeType==='buy'?formatToken(estimated):formatUSD(estimated);
     const eFee = document.getElementById('tok-fee-est'); if(eFee) eFee.innerText = STATE.tradeType==='buy'?formatUSD(feeEst):formatUSD(feeEst);
-    const rLiq = document.getElementById('tok-real-liq'); if(rLiq) rLiq.innerText = formatUSD(token.solPool - VIRTUAL_USD_RESERVE);
+    const rLiq = document.getElementById('tok-real-liq'); if(rLiq) rLiq.innerText = formatUSD(token.solPool - vRes);
 
     const pctBtns = document.getElementById('tok-pct-btns');
     if(pctBtns) {
@@ -2536,8 +2558,8 @@ function RenderShop() {
 
 function RenderLaunch() {
     const me = STATE.players[STATE.myProfile.id];
-    // Cap maxDevBuy en UI a 1.5 USD para evitar que el Dev acapare supply fácilmente.
-    const maxDevBuy = Math.min(1.5, Math.max(0, me.solBalance - 1));
+    // Sin límite de compra de dev en UI
+    const maxDevBuy = Math.max(0, me.solBalance - 1);
     return `
     <div class="max-w-lg mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-8 shadow-2xl animate-fade-in mt-4 md:mt-10">
         <h2 class="text-xl md:text-2xl font-black text-white mb-2 flex items-center gap-3">${Icons.Rocket} Desplegar Token</h2>
@@ -2569,7 +2591,7 @@ function RenderLaunch() {
             <div class="pt-1 md:pt-2">
                 <label class="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 md:mb-2 flex justify-between"><span>Snipe del Dev (Opcional)</span> <span class="text-emerald-400">Max: ${formatUSD(maxDevBuy)}</span></label>
                 <input id="l-devbuy" type="number" step="0.01" min="0" max="${maxDevBuy}" placeholder="USD" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 md:px-4 py-3 md:py-3.5 text-emerald-400 font-mono text-base md:text-lg focus:border-emerald-500 outline-none transition-colors" />
-                <p class="text-[8px] text-slate-600 mt-1 uppercase font-bold">Por seguridad contra Rug Pulls, el Snipe de Dev inicial está limitado.</p>
+                <p class="text-[8px] text-slate-600 mt-1 uppercase font-bold">Puedes invertir el capital que desees. El AMM ajustará la liquidez virtual según tu inversión para evitar que el supply se agote de golpe y darle una gráfica realista.</p>
             </div>
             <div class="bg-slate-950 p-4 md:p-5 rounded-xl border border-slate-800 text-[10px] md:text-sm space-y-1.5 md:space-y-2 mt-3 md:mt-4 shadow-inner">
                 <div class="flex justify-between font-bold text-slate-400 uppercase tracking-wider"><span>Costo (Fijo):</span><span class="font-mono text-white">$1.00</span></div>
@@ -2688,15 +2710,15 @@ function renderGiftModal() {
     const mc = document.getElementById('modal-container');
     if(!STATE.giftTargetId) { mc.classList.add('hidden'); return; }
     const p = STATE.players[STATE.giftTargetId];
-    
+
     mc.innerHTML = `
     <div class="bg-slate-900 border border-slate-800 p-5 md:p-8 rounded-3xl max-w-sm w-full shadow-2xl animate-fade-in my-auto mx-4">
         <h3 class="text-xl md:text-2xl font-black text-white mb-1.5 md:mb-2 flex items-center gap-2 md:gap-3">${Icons.Gift} Donación</h3>
         <div class="text-xs md:text-sm text-slate-500 mb-5 md:mb-6">Enviando USD a <span class="font-bold text-white">${p.name}</span>. Esto mejorará tu reputación.</div>
-        
+
         <label class="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 md:mb-2 block">Monto en USD</label>
         <input id="g-amount" type="number" placeholder="0.00" value="${STATE.giftAmount}" oninput="STATE.giftAmount = this.value" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 md:px-4 py-3 md:py-4 text-emerald-400 font-mono text-lg md:text-xl focus:outline-none focus:border-emerald-500 mb-5 md:mb-6 transition-colors" />
-        
+
         <div class="flex flex-col sm:flex-row gap-2 md:gap-3">
             <button onclick="const a=parseFloat(STATE.giftAmount); if(a>0){ dispatchAction('ACTION_GIFT', {to:'${STATE.giftTargetId}', asset:'USD', amount:a}); STATE.giftTargetId=null; STATE.giftAmount=''; document.getElementById('modal-container').classList.add('hidden'); }" class="flex-1 bg-emerald-500 text-slate-950 font-black py-3 md:py-3.5 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:bg-emerald-400 transition-all uppercase tracking-wider text-xs md:text-sm order-1 sm:order-2">Enviar</button>
             <button onclick="STATE.viewingProfileId=null; STATE.giftTargetId=null; document.getElementById('modal-container').classList.add('hidden');" class="w-full sm:w-auto px-5 md:px-6 bg-slate-800 text-white font-bold py-3 md:py-3.5 rounded-xl hover:bg-slate-700 transition-colors uppercase tracking-wider text-xs md:text-sm order-2 sm:order-1">Cancelar</button>
@@ -2708,7 +2730,7 @@ function renderGiftModal() {
 function generateChartSVG(token, w, h, simplified) {
     const data = [...token.history];
     if (token.currentCandle) data.push(token.currentCandle);
-    const viewData = data.slice(-100); 
+    const viewData = data.slice(-100);
     if(viewData.length === 0) return '';
 
     const pad = simplified ? 0 : 20;
@@ -2747,15 +2769,15 @@ window.onload = () => {
     const navEntries = performance.getEntriesByType("navigation");
     if (navEntries.length > 0 && navEntries[0].type === "reload") {
         window.location.href = 'index.html';
-        return; 
+        return;
     }
 
     const profileStr = localStorage.getItem('degen_profile');
     if(!profileStr) { window.location.href = 'index.html'; return; }
-    
+
     STATE.myProfile = JSON.parse(profileStr);
     const urlParams = new URLSearchParams(window.location.search);
-    
+
     // CASO DE CARGAR PARTIDA
     if(urlParams.get('load') === 'true') {
         loadGameFromStorage();
@@ -2766,7 +2788,7 @@ window.onload = () => {
     const code = urlParams.get('code');
     const isHost = urlParams.get('host') === 'true';
     const isOffline = urlParams.get('offline') === 'true';
-    
+
     if(!code && !isOffline) { window.location.href = 'index.html'; return; }
 
     if(isOffline) {
