@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DegenTerminal - Metaverso 2D & Game</title>
+    <title>DegenTerminal - Trading, Casino & Social</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
@@ -22,8 +22,6 @@
         .terminal-text { text-shadow: 0 0 5px rgba(74, 222, 128, 0.5); }
         @keyframes marquee { 0% { transform: translateX(100vw); } 100% { transform: translateX(-100%); } }
         .animate-marquee { display: inline-block; animation: marquee 25s linear infinite; white-space: nowrap; padding-right: 100vw; }
-        .dpad-btn { background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #10b981; border-radius: 12px; display: flex; justify-content: center; align-items: center; font-size: 20px; user-select: none; touch-action: manipulation; font-weight: 900; cursor: pointer; }
-        .dpad-btn:active { background: rgba(16, 185, 129, 0.4); transform: scale(0.95); }
     </style>
 </head>
 <body class="selection:bg-emerald-500/30 text-sm md:text-base flex flex-col w-full h-full">
@@ -62,8 +60,7 @@ const Icons = {
     Parachute: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M12 12l4-4"/><path d="M12 12l-4-4"/><path d="M2 12h20"/><path d="M12 22a10 10 0 0 1-10-10h20a10 10 0 0 1-10 10z"/></svg>`,
     Dice: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><circle cx="15.5" cy="8.5" r="1.5"/><circle cx="15.5" cy="15.5" r="1.5"/><circle cx="8.5" cy="15.5" r="1.5"/><circle cx="12" cy="12" r="1.5"/></svg>`,
     Bank: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><path d="M12 15v2"/></svg>`,
-    Globe: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
-    Map: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>`
+    Megaphone: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>`
 };
 
 const BOT_STRATEGIES = ['Scalper', 'Hodler', 'Degen', 'Whale', 'Sniper', 'PaperHands', 'RugPuller']; 
@@ -93,11 +90,11 @@ const SHOP_CATEGORIES = {
     ]
 };
 
-const getRank = (sol) => {
-    if(sol < 10) return { emoji: '🦐', name: 'Camarón', color: 'text-slate-400' };
-    if(sol < 50) return { emoji: '🦀', name: 'Cangrejo', color: 'text-orange-400' };
-    if(sol < 200) return { emoji: '🐬', name: 'Delfín', color: 'text-blue-400' };
-    if(sol < 1000) return { emoji: '🦈', name: 'Tiburón', color: 'text-slate-300' };
+const getRank = (usd) => {
+    if(usd < 50) return { emoji: '🦐', name: 'Camarón', color: 'text-slate-400' };
+    if(usd < 500) return { emoji: '🦀', name: 'Cangrejo', color: 'text-orange-400' };
+    if(usd < 5000) return { emoji: '🐬', name: 'Delfín', color: 'text-blue-400' };
+    if(usd < 50000) return { emoji: '🦈', name: 'Tiburón', color: 'text-slate-300' };
     return { emoji: '🐋', name: 'Leviatán', color: 'text-purple-400' };
 };
 
@@ -106,6 +103,7 @@ const formatToken = (num) => new Intl.NumberFormat('en-US', { maximumFractionDig
 
 const VIRTUAL_USD_RESERVE = 20; 
 const BONDING_CURVE_LIMIT = 85; 
+const CEX_LISTING_MCAP = 10000000; // 10 Millones MCap para llegar a Binance/Coinbase
 const getPrice = (solPool, tokenPool) => solPool / tokenPool;
 const calcTokensOut = (solIn, solPool, tokenPool) => tokenPool - ((solPool * tokenPool) / (solPool + solIn * 0.95)); 
 const calcSolOut = (tokensIn, solPool, tokenPool) => solPool - ((solPool * tokenPool) / (tokenPool + tokensIn * 0.95)); 
@@ -116,15 +114,15 @@ const calcSolOut = (tokensIn, solPool, tokenPool) => solPool - ((solPool * token
 let STATE = {
     route: 'lobby', 
     myProfile: null,
-    roomConfig: { code: '', name: 'Sala Degen', maxPlayers: 2050, isHost: false, isOffline: false, botsEnabled: true, botCount: 200, hasMap: true },
+    roomConfig: { code: '', name: 'Sala Degen', maxPlayers: 2050, isHost: false, isOffline: false, botsEnabled: true, botCount: 200 },
     players: {},
     tokens: {},
     chat: [],
+    posts: [], // Nueva Red Social DegenX
     gameState: 'waiting', 
-    worldMap: { width: 10000, height: 10000, objects: [] }, 
     ping: 0,
     toasts: [],
-    activeTab: 'world', 
+    activeTab: 'market', 
     selectedTokenId: null,
     searchQuery: '',
     marketFilter: 'all',
@@ -143,37 +141,11 @@ let STATE = {
     casinoAmount: '',
     stakeAmount: '',
     chatInput: '',
+    socialInput: '',
     launchData: { name: '', ticker: '', devBuy: '', image: '' },
     
     _renderedTabId: null 
 };
-
-// ==========================================
-// CONTROL DE SPAWN 
-// ==========================================
-function getSpawnPos() {
-    const spawn = (STATE.worldMap?.objects || []).find(o => o.type === 'spawn');
-    if (spawn) return { x: spawn.x + spawn.w/2, y: spawn.y + spawn.h/2 };
-    return { x: (STATE.worldMap?.width || 10000)/2, y: (STATE.worldMap?.height || 10000)/2 };
-}
-
-// ==========================================
-// Controles y Teclado
-// ==========================================
-let INPUT_KEYS = { arrowup: false, arrowdown: false, arrowleft: false, arrowright: false, w: false, a: false, s: false, d: false, e: false };
-let keyEToggled = false;
-
-window.addEventListener('keydown', e => { 
-    if(document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
-    const key = e.key.toLowerCase();
-    if(INPUT_KEYS.hasOwnProperty(key)) INPUT_KEYS[key] = true; 
-});
-
-window.addEventListener('keyup', e => { 
-    if(document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
-    const key = e.key.toLowerCase();
-    if(INPUT_KEYS.hasOwnProperty(key)) INPUT_KEYS[key] = false; 
-});
 
 let mqttClient = null; 
 let peer = null;
@@ -184,11 +156,8 @@ let pingerInterval = null;
 let botInterval = null;
 let newsInterval = null; 
 let stakingInterval = null; 
+let autosaveInterval = null;
 let uiRenderScheduled = false;
-let worldAnimFrame = null;
-let worldMoveInterval = null;
-let lastMoveBroadcast = 0;
-const textureCache = {};
 
 function tLog(msg, color='text-emerald-400') {
     const time = new Date().toLocaleTimeString([], {hour12: false});
@@ -232,29 +201,9 @@ window.handleImageUpload = function(event) {
     reader.readAsDataURL(file);
 };
 
-window.loadCustomMap = function(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        try {
-            const loaded = JSON.parse(e.target.result);
-            if(loaded.width && loaded.objects) {
-                STATE.worldMap = loaded;
-                const pos = getSpawnPos();
-                Object.values(STATE.players).forEach(p => { p.x = pos.x; p.y = pos.y; });
-                addToast("Mapa personalizado cargado!", "🌍");
-                broadcastState();
-            } else { addToast("Mapa inválido. Usa un archivo exportado por Degen Editor.", "❌"); }
-        } catch(err) { addToast("Error leyendo archivo.", "❌"); }
-        event.target.value = ''; 
-    };
-    reader.readAsText(file);
-};
-
 function saveGame() {
     if(!STATE.roomConfig.isHost) return addToast("Solo el Host puede guardar", "❌");
-    const saveData = { players: STATE.players, tokens: STATE.tokens, roomConfig: STATE.roomConfig, chat: STATE.chat, gameState: STATE.gameState, worldMap: STATE.worldMap };
+    const saveData = { players: STATE.players, tokens: STATE.tokens, roomConfig: STATE.roomConfig, chat: STATE.chat, posts: STATE.posts, gameState: STATE.gameState };
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(saveData));
     const dlAnchorElem = document.createElement('a'); dlAnchorElem.setAttribute("href", dataStr);
     dlAnchorElem.setAttribute("download", `DegenTerminal_Save_${STATE.roomConfig.code}.json`);
@@ -263,11 +212,10 @@ function saveGame() {
 
 function loadGameFromStorage() {
     try {
-        const loaded = JSON.parse(sessionStorage.getItem('degen_savegame'));
+        const loaded = JSON.parse(sessionStorage.getItem('degen_savegame') || localStorage.getItem('degen_autosave'));
         if(loaded && loaded.players && loaded.roomConfig) {
             STATE.players = loaded.players; STATE.tokens = loaded.tokens || {};
-            STATE.roomConfig = loaded.roomConfig; STATE.chat = loaded.chat || []; STATE.gameState = loaded.gameState || 'waiting';
-            if(loaded.worldMap) STATE.worldMap = loaded.worldMap;
+            STATE.roomConfig = loaded.roomConfig; STATE.chat = loaded.chat || []; STATE.posts = loaded.posts || []; STATE.gameState = loaded.gameState || 'waiting';
             
             const hostProfile = Object.values(STATE.players).find(p => !p.isBot) || STATE.players[Object.keys(STATE.players)[0]];
             STATE.myProfile = { ...hostProfile };
@@ -276,9 +224,8 @@ function loadGameFromStorage() {
             initNetwork(STATE.roomConfig.code, mode, STATE.roomConfig.botCount);
             
             STATE.route = STATE.gameState === 'playing' ? 'game' : 'lobby';
-            if(!STATE.roomConfig.hasMap && STATE.activeTab === 'world') STATE.activeTab = 'market';
-            addToast("Partida cargada", "✅"); requestUIRender(true);
-        } else { addToast("Archivo inválido.", "❌"); setTimeout(()=>window.location.href='index.html', 2000); }
+            addToast("Partida restaurada", "✅"); requestUIRender(true);
+        } else { addToast("No se encontraron datos.", "❌"); setTimeout(()=>window.location.href='index.html', 2000); }
     } catch(err) { addToast("Error leyendo archivo.", "❌"); setTimeout(()=>window.location.href='index.html', 2000); }
 }
 
@@ -359,7 +306,7 @@ async function toggleVoice() {
 }
 
 // ==========================================
-// SISTEMA DE RED (MQTT VPN-LIKE ENCRIPTADO)
+// SISTEMA DE RED (MQTT SIGNALING + WEBRTC P2P)
 // ==========================================
 const WEBRTC_CONFIG = {
     config: {
@@ -381,21 +328,20 @@ window.adjustBots = function(targetCount) {
     if (currentBotKeys.length < targetCount) {
         const toAdd = targetCount - currentBotKeys.length;
         const startIndex = currentBotKeys.length;
-        const pos = getSpawnPos();
 
         for (let i = 0; i < toAdd; i++) {
             const strategy = BOT_STRATEGIES[Math.floor(Math.random() * BOT_STRATEGIES.length)];
             let startBal = 10;
-            if (strategy === 'Whale') startBal = 200;
-            else if (strategy === 'Degen' || strategy === 'Sniper' || strategy === 'RugPuller') startBal = 40;
-            else if (strategy === 'PaperHands') startBal = 15;
+            let botFollowers = 0;
+            if (strategy === 'Whale') { startBal = 200; botFollowers = 5000 + Math.floor(Math.random() * 20000); }
+            else if (strategy === 'Degen' || strategy === 'Sniper' || strategy === 'RugPuller') { startBal = 40; botFollowers = 100 + Math.floor(Math.random() * 1000); }
+            else if (strategy === 'PaperHands') { startBal = 15; botFollowers = Math.floor(Math.random() * 50); }
             
             const id = `bot_${Date.now()}_${Math.random().toString(36).substr(2,5)}`;
             STATE.players[id] = { 
                 id: id, name: `${strategy}_Bot${startIndex + i}`, avatar: '🤖', 
                 solBalance: startBal, portfolio: {}, isBot: true, strategy: strategy,
-                reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0,
-                x: pos.x + (Math.random() * 400 - 200), y: pos.y + (Math.random() * 400 - 200)
+                reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0, followers: botFollowers
             };
         }
     } else if (currentBotKeys.length > targetCount) {
@@ -413,133 +359,138 @@ const BROKER_URLS = [
 let currentBrokerIndex = 0;
 
 function initNetwork(roomId, mode, customBotCount = 20) {
-    if (peer) { peer.destroy(); peer = null; }
-    if (mqttClient) { mqttClient.end(); mqttClient = null; }
+    if (peer && peer.destroy) { peer.destroy(); peer = null; }
+    // No destruir mqttClient al reconectar para evitar que se reinicie todo si solo falla MQTT temporalmente.
+    if(mqttClient && mode === 'offline') { mqttClient.end(); mqttClient = null; }
     STATE.netLogs = []; 
 
     if (mode === 'offline') {
         tLog("Iniciando Entorno de Simulación Local.", "text-purple-400");
-        const pos = getSpawnPos();
-        STATE.players[STATE.myProfile.id] = { ...STATE.myProfile, solBalance: 10, portfolio: {}, reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0, x: pos.x, y: pos.y, speed: 2, mountedId: null };
-        if(!STATE.players['SYSTEM_MM']) STATE.players['SYSTEM_MM'] = { id: 'SYSTEM_MM', name: 'Market_Maker', avatar: '📰', isBot: true, solBalance: 999999, portfolio: {}, reputation: 100, solStaked: 0, x:-100, y:-100 };
+        if (!STATE.players[STATE.myProfile.id]) {
+            STATE.players[STATE.myProfile.id] = { ...STATE.myProfile, solBalance: 10, portfolio: {}, reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0, followers: 0 };
+        }
+        if(!STATE.players['SYSTEM_MM']) STATE.players['SYSTEM_MM'] = { id: 'SYSTEM_MM', name: 'Exchange_MM', avatar: '🏦', isBot: true, solBalance: 999999, portfolio: {}, reputation: 100, solStaked: 0, followers: 999999 };
         window.adjustBots(customBotCount);
         addToast("Modo Offline Activado", "🔌");
         requestUIRender(true);
         startSystemEvents(); 
-        if(STATE.roomConfig.hasMap) startWorldEngine();
+        startHostAutoSave();
         return;
     }
 
     const url = BROKER_URLS[currentBrokerIndex];
-    tLog(`[PROXY] Construyendo túnel cifrado a través de: ${url.split('//')[1]}`, "text-blue-400");
+    tLog(`[PROXY] Conectando servicio de señalización...`, "text-blue-400");
     const clientId = 'degen_' + Math.random().toString(16).substr(2, 8);
-    mqttClient = mqtt.connect(url, { clientId, connectTimeout: 5000, reconnectPeriod: 0 });
+    
+    if(!mqttClient || !mqttClient.connected) {
+        mqttClient = mqtt.connect(url, { clientId, connectTimeout: 5000, reconnectPeriod: 0 });
 
-    mqttClient.on('connect', () => {
-        tLog("✓ [VPN-SIM] Firewall evadido. Tráfico cifrado.", "text-emerald-400");
-        mqttClient.options.reconnectPeriod = 1000;
-        
-        if (mode === 'host') {
-            mqttClient.subscribe(`dgn/${roomId}/in`);
-            addToast(`Sala Segura Creada: ${roomId}`, '🌐');
-            const pos = getSpawnPos();
-            STATE.players[STATE.myProfile.id] = { ...STATE.myProfile, solBalance: 10, portfolio: {}, reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0, x: pos.x, y: pos.y, speed: 2, mountedId: null };
-            if(!STATE.players['SYSTEM_MM']) STATE.players['SYSTEM_MM'] = { id: 'SYSTEM_MM', name: 'Market_Maker', avatar: '📰', isBot: true, solBalance: 999999, portfolio: {}, reputation: 100, solStaked: 0, x:-100, y:-100 };
-            window.adjustBots(customBotCount);
-            requestUIRender(true);
-            startSystemEvents();
-            if(STATE.roomConfig.hasMap) startWorldEngine();
-
-            // PUBLICADOR GLOBAL SERVERLESS (Muestra la sala en el index.html de otros)
-            setInterval(() => {
-                if (STATE.roomConfig.isHost && !STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
-                    mqttClient.publish('dgn_global_discovery_v2', JSON.stringify({
-                        code: STATE.roomConfig.code,
-                        roomName: STATE.roomConfig.name,
-                        hasMap: STATE.roomConfig.hasMap,
-                        host: STATE.myProfile.name,
-                        players: Object.keys(STATE.players).length,
-                        max: STATE.roomConfig.maxPlayers,
-                        gameState: STATE.gameState
-                    }));
-                }
-            }, 3000);
-
-        } else {
-            mqttClient.subscribe(`dgn/${roomId}/out`);
-            const pos = getSpawnPos();
-            const joinPacket = { type: 'JOIN_REQ', payload: { ...STATE.myProfile, x: pos.x, y: pos.y, speed: 2, mountedId: null }, senderId: STATE.myProfile.id };
-            mqttClient.publish(`dgn/${roomId}/in`, JSON.stringify(joinPacket));
-            addToast("Buscando al Host...", '⏳');
+        mqttClient.on('connect', () => {
+            tLog("✓ [VPN-SIM] Señalización lista.", "text-emerald-400");
+            mqttClient.options.reconnectPeriod = 1000;
             
-            if(window.handshakeInterval) clearInterval(window.handshakeInterval);
-            window.handshakeInterval = setInterval(() => {
-                if(Object.keys(STATE.players).length <= 1) {
-                    tLog(`[!] Intentando conectar (Host ocupado o de lejos)...`, "text-orange-400");
-                    mqttClient.publish(`dgn/${roomId}/in`, JSON.stringify(joinPacket));
-                } else {
-                    clearInterval(window.handshakeInterval);
-                    if(STATE.roomConfig.hasMap && !window.worldEngineStarted) {
-                        window.worldEngineStarted = true;
-                        startWorldEngine();
-                    }
+            if (mode === 'host') {
+                mqttClient.subscribe(`dgn/${roomId}/in`);
+                addToast(`Sala Segura Creada/Reconectada: ${roomId}`, '🌐');
+                
+                if (!STATE.players[STATE.myProfile.id]) {
+                    STATE.players[STATE.myProfile.id] = { ...STATE.myProfile, solBalance: 10, portfolio: {}, reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0, followers: 0 };
                 }
-            }, 3000);
-        }
-    });
+                if(!STATE.players['SYSTEM_MM']) {
+                    STATE.players['SYSTEM_MM'] = { id: 'SYSTEM_MM', name: 'Exchange_MM', avatar: '🏦', isBot: true, solBalance: 999999, portfolio: {}, reputation: 100, solStaked: 0, followers: 999999 };
+                }
+                window.adjustBots(customBotCount);
+                requestUIRender(true);
+                startSystemEvents();
+                startHostAutoSave();
 
-    mqttClient.on('message', (topic, message) => {
-        try {
-            const data = JSON.parse(message.toString());
-            if (mode === 'host' && topic.endsWith('/in')) processMessageAsHost(data);
-            else if (mode === 'client' && topic.endsWith('/out')) processMessageAsClient(data);
-        } catch(e) {}
-    });
-
-    mqttClient.on('close', () => {
-        if (!mqttClient.connected) {
-            tLog(`[!] Túnel colapsó. Rotando proxy...`, "text-yellow-400");
-            currentBrokerIndex = (currentBrokerIndex + 1) % BROKER_URLS.length;
-            setTimeout(() => { if(STATE.route === 'lobby' || STATE.route === 'game') connectMQTT(roomId, mode, customBotCount); }, 1500);
-        }
-    });
-
-    // WEBRTC VOZ Y P2P DATA
-    try {
-        if (mode === 'host') {
-            peer = new Peer(`dgn-voice-${roomId}`, WEBRTC_CONFIG);
-            window.clientConns = {}; // Almacenar conexiones de datos P2P
-            peer.on('open', (id) => { 
-                STATE.myProfile.peerId = id; 
-                STATE.roomConfig.hostPeerId = id; // Guardar para clientes
-            });
-            peer.on('connection', (conn) => {
-                conn.on('data', (data) => {
-                    if (data.senderId) {
-                        window.clientConns[data.senderId] = conn;
-                        // Si es un saludo inicial P2P, le enviamos el mapa pesado directo
-                        if (data.type === 'P2P_HELLO') {
-                            conn.send({ type: 'STATE_SYNC', payload: { players: STATE.players, tokens: STATE.tokens, chat: STATE.chat, gameState: STATE.gameState, worldMap: STATE.worldMap } });
-                            return;
-                        }
+                if(window.discoveryInterval) clearInterval(window.discoveryInterval);
+                window.discoveryInterval = setInterval(() => {
+                    if (STATE.roomConfig.isHost && !STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
+                        mqttClient.publish('dgn_global_discovery_v2', JSON.stringify({
+                            code: STATE.roomConfig.code,
+                            roomName: STATE.roomConfig.name,
+                            hasMap: false,
+                            host: STATE.myProfile.name,
+                            players: Object.keys(STATE.players).length,
+                            max: STATE.roomConfig.maxPlayers,
+                            gameState: STATE.gameState
+                        }));
                     }
-                    if (data.type === 'PING') { conn.send({ type: 'PONG', target: data.senderId, time: data.time }); return; }
-                    processMessageAsHost(data);
+                }, 3000);
+
+            } else {
+                mqttClient.subscribe(`dgn/${roomId}/out`);
+                const joinPacket = { type: 'JOIN_REQ', payload: { ...STATE.myProfile }, senderId: STATE.myProfile.id };
+                mqttClient.publish(`dgn/${roomId}/in`, JSON.stringify(joinPacket));
+                addToast("Buscando al Host...", '⏳');
+                
+                if(window.handshakeInterval) clearInterval(window.handshakeInterval);
+                window.handshakeInterval = setInterval(() => {
+                    if(Object.keys(STATE.players).length <= 1) {
+                        tLog(`[!] Intentando conectar (Host ocupado o de lejos)...`, "text-orange-400");
+                        mqttClient.publish(`dgn/${roomId}/in`, JSON.stringify(joinPacket));
+                    } else {
+                        clearInterval(window.handshakeInterval);
+                    }
+                }, 3000);
+            }
+        });
+
+        mqttClient.on('message', (topic, message) => {
+            try {
+                const data = JSON.parse(message.toString());
+                if (mode === 'host' && topic.endsWith('/in')) processMessageAsHost(data);
+                else if (mode === 'client' && topic.endsWith('/out')) processMessageAsClient(data);
+            } catch(e) {}
+        });
+
+        mqttClient.on('close', () => {
+            if (!mqttClient.connected) {
+                tLog(`[!] Señalización interrumpida. Recuperando...`, "text-yellow-400");
+                currentBrokerIndex = (currentBrokerIndex + 1) % BROKER_URLS.length;
+                setTimeout(() => { if(STATE.route === 'lobby' || STATE.route === 'game') initNetwork(roomId, mode, customBotCount); }, 1500);
+            }
+        });
+    }
+
+    // WEBRTC P2P DATA (LA RUTA ULTRA RÁPIDA)
+    if(!peer) {
+        try {
+            if (mode === 'host') {
+                peer = new Peer(`dgn-voice-${roomId}`, WEBRTC_CONFIG);
+                window.clientConns = {}; 
+                peer.on('open', (id) => { 
+                    STATE.myProfile.peerId = id; 
+                    STATE.roomConfig.hostPeerId = id; 
                 });
-            });
-            peer.on('call', call => {
-                if (window.localAudioStream) call.answer(window.localAudioStream); else call.answer(); 
-                call.on('stream', remoteStream => playAudioStream(remoteStream, call.peer));
-            });
-        } else {
-            peer = new Peer(WEBRTC_CONFIG);
-            peer.on('open', (id) => { STATE.myProfile.peerId = id; });
-            peer.on('call', call => {
-                if (window.localAudioStream) call.answer(window.localAudioStream); else call.answer(); 
-                call.on('stream', remoteStream => playAudioStream(remoteStream, call.peer));
-            });
-        }
-    } catch(e) { tLog("Servicio WebRTC no disponible.", "text-slate-500"); }
+                peer.on('connection', (conn) => {
+                    conn.on('data', (data) => {
+                        if (data.senderId) {
+                            window.clientConns[data.senderId] = conn;
+                            if (data.type === 'P2P_HELLO') {
+                                conn.send({ type: 'STATE_SYNC', payload: { players: STATE.players, tokens: STATE.tokens, chat: STATE.chat, posts: STATE.posts, gameState: STATE.gameState } });
+                                return;
+                            }
+                        }
+                        if (data.type === 'PING') { conn.send({ type: 'PONG', target: data.senderId, time: data.time }); return; }
+                        processMessageAsHost(data);
+                    });
+                });
+                peer.on('call', call => {
+                    if (window.localAudioStream) call.answer(window.localAudioStream); else call.answer(); 
+                    call.on('stream', remoteStream => playAudioStream(remoteStream, call.peer));
+                });
+            } else {
+                peer = new Peer(WEBRTC_CONFIG);
+                peer.on('open', (id) => { STATE.myProfile.peerId = id; });
+                peer.on('call', call => {
+                    if (window.localAudioStream) call.answer(window.localAudioStream); else call.answer(); 
+                    call.on('stream', remoteStream => playAudioStream(remoteStream, call.peer));
+                });
+            }
+        } catch(e) { tLog("Servicio WebRTC no disponible.", "text-slate-500"); }
+    }
 
     if (pingerInterval) clearInterval(pingerInterval);
     pingerInterval = setInterval(() => {
@@ -554,7 +505,22 @@ function initNetwork(roomId, mode, customBotCount = 20) {
     }, 2000);
 }
 
-// ---------------- EVENTOS DEL SISTEMA ----------------
+// ---------------- BACKUP & AUTOSAVE ----------------
+function startHostAutoSave() {
+    if (!STATE.roomConfig.isHost) return;
+    if (autosaveInterval) clearInterval(autosaveInterval);
+    
+    autosaveInterval = setInterval(() => {
+        if (STATE.gameState === 'playing') {
+            const saveData = { players: STATE.players, tokens: STATE.tokens, roomConfig: STATE.roomConfig, chat: STATE.chat, posts: STATE.posts, gameState: STATE.gameState };
+            const jsonStr = JSON.stringify(saveData);
+            sessionStorage.setItem('degen_savegame', jsonStr);
+            localStorage.setItem('degen_autosave', jsonStr); 
+        }
+    }, 5000);
+}
+
+// ---------------- EVENTOS DEL SISTEMA Y BOT BRAIN ----------------
 function startSystemEvents() {
     if (!STATE.roomConfig.isHost) return;
     
@@ -568,25 +534,38 @@ function startSystemEvents() {
         const token = STATE.tokens[randomTokenId];
         if ((token.solPool - VIRTUAL_USD_RESERVE) < 1) return; 
         
-        const events = [
-            { msg: `📰 RUMOR: ¡Elon Musk acaba de tuitear algo sospechosamente parecido a $${token.ticker}!`, buy: true },
-            { msg: `📰 HYPE: Un exchange Top 10 acaba de anunciar que está revisando $${token.ticker}!`, buy: true },
-            { msg: `📰 FOMO: ¡Un wallet anónimo acaba de comprar masivamente $${token.ticker}!`, buy: true },
-            { msg: `📰 FUD: Se detectó que el dev de $${token.ticker} está moviendo tokens a una nueva wallet...`, buy: false },
-            { msg: `📰 PANIC: ¡Un grupo de Telegram está coordinando un dump masivo de $${token.ticker}!`, buy: false }
-        ];
-        
-        const ev = events[Math.floor(Math.random() * events.length)];
-        const simVol = Math.random() * 8 + 2; 
-        if (!ev.buy) {
-             const mm = STATE.players['SYSTEM_MM'];
-             mm.portfolio[randomTokenId] = (mm.portfolio[randomTokenId] || 0) + calcTokensOut(simVol, token.solPool, token.tokenPool);
+        const isFud = Math.random() > 0.6;
+        let pText = '';
+        if(isFud) {
+            const fudMessages = [
+                `Acabo de ver el contrato de $${token.ticker} y tiene mint authority. ¡Cuidado! 🚨`,
+                `El dev de $${token.ticker} está moviendo liquidez, huele a rug pull masivo.`,
+                `No toquen $${token.ticker}, es una trampa mortal de ballenas.📉`
+            ];
+            pText = fudMessages[Math.floor(Math.random() * fudMessages.length)];
+        } else {
+            const shillMessages = [
+                `Elon acaba de seguir a la cuenta de $${token.ticker} 👀🚀`,
+                `Rumores fuertes de que $${token.ticker} se lista en Binance mañana. Entren ahora o lloren después.`,
+                `La comunidad de $${token.ticker} es la más fuerte que he visto. 100x programado.💎🤲`
+            ];
+            pText = shillMessages[Math.floor(Math.random() * shillMessages.length)];
         }
         
-        handleTradeHost(randomTokenId, ev.buy, ev.buy ? simVol : STATE.players['SYSTEM_MM'].portfolio[randomTokenId], 'SYSTEM_MM', true);
-        handleChatHost(ev.msg, 'SYSTEM_MM', true);
+        // El System MM postea noticias
+        handlePostHost(pText, 'SYSTEM_MM');
+        
+        // Simular efecto de mercado
+        const simVol = Math.random() * 8 + 2; 
+        if (isFud) {
+             const mm = STATE.players['SYSTEM_MM'];
+             mm.portfolio[randomTokenId] = (mm.portfolio[randomTokenId] || 0) + calcTokensOut(simVol, token.solPool, token.tokenPool);
+             handleTradeHost(randomTokenId, false, STATE.players['SYSTEM_MM'].portfolio[randomTokenId], 'SYSTEM_MM', true);
+        } else {
+            handleTradeHost(randomTokenId, true, simVol, 'SYSTEM_MM', true);
+        }
         broadcastState();
-    }, 20000); 
+    }, 25000); 
 
     if (stakingInterval) clearInterval(stakingInterval);
     stakingInterval = setInterval(() => {
@@ -605,77 +584,35 @@ function startSystemEvents() {
 function processMessageAsHost(data) {
     const { type, payload, senderId, time } = data;
     
-    if (type === 'PING') { mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify({ type: 'PONG', target: senderId, time })); return; }
+    if (type === 'PING') { 
+        if (window.clientConns && window.clientConns[senderId] && window.clientConns[senderId].open) {
+            window.clientConns[senderId].send({ type: 'PONG', target: senderId, time });
+        } else if (mqttClient) {
+            mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify({ type: 'PONG', target: senderId, time })); 
+        }
+        return; 
+    }
     
     if (type === 'JOIN_REQ') {
         if (STATE.players[payload.id]) {
-            // PREVENIR BUG DE BALANCE: Si ya existe en la DB de sesión, solo actualizar estado
-            STATE.players[payload.id].x = payload.x;
-            STATE.players[payload.id].y = payload.y;
             STATE.players[payload.id].name = payload.name;
             STATE.players[payload.id].avatar = payload.avatar;
         } else {
-            // Jugador nuevo
             if (Object.keys(STATE.players).length >= STATE.roomConfig.maxPlayers) {
                 mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify({ type: 'JOIN_REJECT', target: payload.id, reason: 'Sala llena' }));
                 return;
             }
-            STATE.players[payload.id] = { ...payload, solBalance: 10, portfolio: {}, reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0 };
+            STATE.players[payload.id] = { ...payload, solBalance: 10, portfolio: {}, reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0, followers: 0 };
         }
-        // Avisarle que se meta enviándole la config de la sala
         mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify({ type: 'ROOM_CONFIG', payload: STATE.roomConfig, target: payload.id }));
         broadcastState();
     }
     
-    if (type === 'ACTION_MOVE') {
-        if(STATE.players[senderId]) {
-            STATE.players[senderId].x = payload.x;
-            STATE.players[senderId].y = payload.y;
-            STATE.players[senderId].mountedId = payload.mountedId;
-            
-            if (payload.mountedId && STATE.worldMap && STATE.worldMap.objects) {
-                const car = STATE.worldMap.objects.find(o => o.id === payload.mountedId);
-                if (car && payload.carX !== undefined && payload.carY !== undefined) {
-                    car.x = payload.carX;
-                    car.y = payload.carY;
-                }
-            }
-            // OPTIMIZACIÓN DE RED: Broadcast ligero de movimiento
-            const syncPkt = { type: 'SYNC_MOVE', senderId, payload };
-            if (!STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
-                mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify(syncPkt));
-            }
-            if (window.clientConns) {
-                Object.values(window.clientConns).forEach(c => { if(c.open) c.send(syncPkt); });
-            }
-        }
-    }
-    
-    if (type === 'ACTION_MAP_UPDATE') {
-        if (STATE.worldMap && STATE.worldMap.objects) {
-            const obj = STATE.worldMap.objects.find(o => o.id === payload.id);
-            if (obj) {
-                if (payload.x !== undefined) obj.x = payload.x;
-                if (payload.y !== undefined) obj.y = payload.y;
-                if (payload.color !== undefined) obj.color = payload.color;
-                broadcastState(); // Importante: Compartir el cambio a todos
-            }
-        }
-    }
-    
-    if (type === 'ACTION_PLAYER_SYNC') {
-        if (STATE.players[senderId]) {
-            if (payload.solBalance !== undefined) STATE.players[senderId].solBalance = payload.solBalance;
-            if (payload.reputation !== undefined) STATE.players[senderId].reputation = payload.reputation;
-            if (payload.speed !== undefined) STATE.players[senderId].speed = payload.speed;
-            broadcastState();
-        }
-    }
-
     if (type === 'ACTION_TRADE') handleTradeHost(payload.tokenId, payload.isBuy, payload.amount, senderId);
     if (type === 'ACTION_LAUNCH') handleLaunchHost(payload.name, payload.ticker, payload.image, payload.devBuy, senderId);
     if (type === 'ACTION_BURN') handleBurnHost(payload.tokenId, payload.amount, senderId);
     if (type === 'ACTION_CHAT') handleChatHost(payload.msg, senderId, false);
+    if (type === 'ACTION_POST') handlePostHost(payload.text, senderId);
     if (type === 'ACTION_GIFT') handleGiftHost(payload.to, payload.asset, payload.amount, senderId);
     if (type === 'ACTION_BUY_LUXURY') handleBuyLuxuryHost(payload.itemId, senderId);
     if (type === 'ACTION_ADD_BOT') { window.adjustBots(Object.keys(STATE.players).filter(k=>STATE.players[k].isBot).length + 1); }
@@ -683,7 +620,8 @@ function processMessageAsHost(data) {
         const p = STATE.players[senderId];
         if(p && p.solBalance >= payload.amount && payload.amount > 0) {
             p.solBalance -= payload.amount; p.reputation = Math.min(100, (p.reputation || 1) + payload.amount * 5); 
-            handleChatHost(`💖 ${p.name} quemó ${formatSOL(payload.amount)} por beneficencia!`, senderId, true);
+            p.followers += Math.floor(payload.amount * 10); // Caridad da seguidores
+            handleChatHost(`💖 ${p.name} quemó ${formatUSD(payload.amount)} por beneficencia!`, senderId, true);
             broadcastState();
         }
     }
@@ -691,11 +629,12 @@ function processMessageAsHost(data) {
         const p = STATE.players[senderId];
         if(p && p.solBalance >= payload.amount && payload.amount > 0) {
             p.solBalance -= payload.amount; p.reputation = Math.min(100, (p.reputation || 1) + payload.amount * 8); 
+            p.followers += Math.floor(payload.amount * 20); // Airdrops dan más seguidores
             const humans = Object.values(STATE.players).filter(pl => !pl.isBot && pl.id !== senderId);
             if (humans.length > 0) {
                 const split = payload.amount / humans.length;
                 humans.forEach(h => { h.solBalance += split; });
-                handleChatHost(`🚁 AIRDROP: ${p.name} repartió ${formatSOL(payload.amount)} a ${humans.length} degens!`, senderId, true);
+                handleChatHost(`🚁 AIRDROP: ${p.name} repartió ${formatUSD(payload.amount)} a ${humans.length} degens!`, senderId, true);
             } else { handleChatHost(`🚁 ${p.name} intentó un Airdrop, pero no hay humanos. Se quemaron.`, senderId, true); }
             broadcastState();
         }
@@ -706,8 +645,8 @@ function processMessageAsHost(data) {
             p.solBalance -= payload.amount;
             if(Math.random() > 0.5) {
                 p.solBalance += (payload.amount * 2);
-                handleChatHost(`🎰 ¡${p.name} ganó ${formatSOL(payload.amount)} en el Casino! x2`, senderId, true);
-            } else { handleChatHost(`🎰 ${p.name} fue liquidado y perdió ${formatSOL(payload.amount)} en el Casino. F`, senderId, true); }
+                handleChatHost(`🎰 ¡${p.name} ganó ${formatUSD(payload.amount)} en el Casino! x2`, senderId, true);
+            } else { handleChatHost(`🎰 ${p.name} fue liquidado y perdió ${formatUSD(payload.amount)} en el Casino. F`, senderId, true); }
             broadcastState();
         }
     }
@@ -730,36 +669,16 @@ function processMessageAsHost(data) {
 function processMessageAsClient(data) {
     const { type, payload, senderId, time, target } = data;
     
-    // OPTIMIZACIÓN DE RED: Manejar movimiento ligero sin re-render UI
-    if (type === 'SYNC_MOVE') {
-        if(STATE.players[senderId]) {
-            STATE.players[senderId].x = payload.x;
-            STATE.players[senderId].y = payload.y;
-            STATE.players[senderId].mountedId = payload.mountedId;
-            if (payload.mountedId && STATE.worldMap && STATE.worldMap.objects) {
-                const car = STATE.worldMap.objects.find(o => o.id === payload.mountedId);
-                if (car && payload.carX !== undefined && payload.carY !== undefined) {
-                    car.x = payload.carX; car.y = payload.carY;
-                }
-            }
-        }
-        return; // No requerimos render de UI completo para esto
-    }
-    
     if (type === 'ROOM_CONFIG' && target === STATE.myProfile.id) {
         STATE.roomConfig.name = payload.name;
-        STATE.roomConfig.hasMap = payload.hasMap;
-        STATE.roomConfig.hostPeerId = payload.hostPeerId; // Guardar PeerID P2P
-        if (!payload.hasMap && STATE.activeTab === 'world') STATE.activeTab = 'market';
+        STATE.roomConfig.hostPeerId = payload.hostPeerId; 
         requestUIRender(true);
 
-        // ESTABLECER CONEXIÓN P2P DIRECTA (~10ms - 50ms)
         if (payload.hostPeerId && (!window.dataConn || !window.dataConn.open)) {
             try {
                 window.dataConn = peer.connect(payload.hostPeerId);
                 window.dataConn.on('open', () => { 
                     tLog("⚡ Conexión P2P Directa Establecida", "text-cyan-400"); 
-                    // Obligar a WebRTC a mandar un saludo para registrarnos y recibir el mapa
                     window.dataConn.send({ type: 'P2P_HELLO', senderId: STATE.myProfile.id });
                 });
                 window.dataConn.on('data', (data) => processMessageAsClient(data));
@@ -768,26 +687,20 @@ function processMessageAsClient(data) {
     }
     
     if (type === 'STATE_SYNC') {
-        const myLocalX = STATE.players[STATE.myProfile.id]?.x;
-        const myLocalY = STATE.players[STATE.myProfile.id]?.y;
-        const myMounted = STATE.players[STATE.myProfile.id]?.mountedId;
-        
+        if (STATE.lastSyncTime && time && time < STATE.lastSyncTime) return; 
+        if (time) STATE.lastSyncTime = time;
+
         STATE.players = payload.players; 
         STATE.tokens = payload.tokens; 
         STATE.gameState = payload.gameState; 
         STATE.chat = payload.chat;
-        if (payload.worldMap) STATE.worldMap = payload.worldMap; // Solo actualizar mapa si el paquete lo incluye
+        if(payload.posts) STATE.posts = payload.posts;
         
-        if (STATE.players[STATE.myProfile.id] && myLocalX !== undefined) {
-            STATE.players[STATE.myProfile.id].x = myLocalX;
-            STATE.players[STATE.myProfile.id].y = myLocalY;
-            STATE.players[STATE.myProfile.id].mountedId = myMounted;
-        }
-
         let force = false;
         if(STATE.route === 'lobby' && STATE.gameState === 'playing') { STATE.route = 'game'; force = true; }
         requestUIRender(force);
     }
+    
     if (type === 'PONG' && target === STATE.myProfile.id) { STATE.ping = Date.now() - time; const pingEl = document.getElementById('ping-display'); if(pingEl) pingEl.innerText = STATE.ping + 'ms'; }
     if (type === 'JOIN_REJECT' && target === STATE.myProfile.id) {
         addToast("Error: " + payload.reason, "❌"); if(mqttClient) { mqttClient.end(); mqttClient = null; }
@@ -798,21 +711,23 @@ function processMessageAsClient(data) {
 
 function broadcastState() {
     if (STATE.roomConfig.isHost) {
-        const syncPayload = { players: STATE.players, tokens: STATE.tokens, chat: STATE.chat, gameState: STATE.gameState };
+        const syncTime = Date.now();
+        const syncPayload = { players: STATE.players, tokens: STATE.tokens, chat: STATE.chat, posts: STATE.posts, gameState: STATE.gameState };
 
-        // MQTT (Paquete Ligero: Omitimos el mapa para evitar que el servidor global lo bloquee)
-        if (!STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
-            const msg = { type: 'STATE_SYNC', payload: syncPayload };
-            mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify(msg));
-        }
-        
-        // P2P Ultra Rápido (Paquete Completo: Enviamos el mapa sin límites de tamaño)
+        // P2P Ultra Rápido (Principal)
         if (window.clientConns) {
-            const msgObjFull = { type: 'STATE_SYNC', payload: { ...syncPayload, worldMap: STATE.worldMap } };
+            const msgObjFull = { type: 'STATE_SYNC', time: syncTime, payload: syncPayload };
             Object.values(window.clientConns).forEach(c => {
                 if(c.open) c.send(msgObjFull);
             });
         }
+
+        // MQTT Fallback (Ligero)
+        if (!STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
+            const msg = { type: 'STATE_SYNC', time: syncTime, payload: syncPayload };
+            mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify(msg));
+        }
+        
         requestUIRender(); 
     }
 }
@@ -828,15 +743,45 @@ function hostEmitAlert(senderId, msg, icon) {
 }
 
 // ==========================================
-// HOST LOGIC & BOT ENGINE
+// HOST LOGIC & SOCIAL ENGINE
 // ==========================================
+function calculateHypeMultiplier(tokenTicker) {
+    let hype = 1.0;
+    // Mirar los últimos 30 posts en DegenX
+    STATE.posts.slice(0, 30).forEach(p => {
+        if(p.text.includes(`$${tokenTicker}`)) {
+            const author = STATE.players[p.authorId];
+            if(author && author.followers > 0) {
+                hype += (author.followers / 20000); // 20k followers = +1x al multiplicador base
+            }
+        }
+    });
+    return Math.min(hype, 5.0); // Máximo 5x de hype por redes sociales
+}
+
+function handlePostHost(text, playerId) {
+    if(!text || text.trim() === '') return;
+    const author = STATE.players[playerId];
+    if(!author) return;
+
+    STATE.posts.unshift({
+        id: 'post_' + Date.now() + Math.random().toString(36).substr(2,5),
+        authorId: playerId,
+        authorName: author.name,
+        authorAvatar: author.avatar,
+        text: text.substring(0, 280),
+        time: Date.now()
+    });
+    STATE.posts = STATE.posts.slice(0, 80); // Mantener límite de 80 posts para no saturar memoria
+    broadcastState();
+}
+
 function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
     const player = STATE.players[playerId];
     const token = STATE.tokens[tokenId];
     if (!player || !token || amount <= 0) return;
 
     if (!player.tradesInfo) player.tradesInfo = {};
-    let logMsg = '';
     const currentPrice = getPrice(token.solPool, token.tokenPool);
     
     let currentCandle = token.currentCandle;
@@ -853,11 +798,8 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
         player.tradesInfo[tokenId] = { entryPrice: getPrice(token.solPool, token.tokenPool) };
     } else {
         const currentBal = player.portfolio[tokenId] || 0;
-        
-        // Anti-dust (100% Sell logic): Si el usuario intenta vender más del 99.9% de su balance, vaciar la cartera por completo.
         let sellAmount = amount;
         if (amount >= currentBal * 0.999) sellAmount = currentBal;
-
         if (currentBal < sellAmount) return;
 
         if (sellAmount > (token.tokenPool * 0.5) && !player.isBot) player.reputation = Math.max(1, (player.reputation || 1) - 30);
@@ -874,22 +816,49 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
     token.currentCandle = currentCandle;
 
     let milestoneMsg = null;
+    let postMsg = null;
     const mcapUsd = newPrice * token.initialSupply; 
     const realLiq = token.solPool - VIRTUAL_USD_RESERVE;
     if (!token.milestones) token.milestones = {};
     const creator = STATE.players[token.creatorId];
 
-    if (realLiq >= BONDING_CURVE_LIMIT && !token.milestones.mRaydium) {
-        token.milestones.mRaydium = true; milestoneMsg = `👑 $${token.ticker} COMPLETÓ LA CURVA Y SE FUE A RAYDIUM!`;
-        if(creator) creator.reputation = Math.min(100, (creator.reputation || 1) + 20);
+    if (mcapUsd >= CEX_LISTING_MCAP && !token.milestones.mCEX) {
+        // EXCHANGES TIER 1 LISTING (10M MCap)
+        token.milestones.mCEX = true;
+        milestoneMsg = `🏦 ¡ALERTA GLOBAL! $${token.ticker} HA SIDO LISTADA EN BINANCE. VOLUMEN INSTITUCIONAL ENTRANTE.`;
+        postMsg = `🚨 BOOM 🚨 $${token.ticker} acaba de ser listada en los principales CEX. ¡Esto va a mil millones! 🚀`;
+        if(creator) { 
+            creator.reputation = Math.min(100, (creator.reputation || 1) + 50); 
+            creator.followers += 20000 + Math.floor(Math.random() * 10000); 
+        }
+        // El MM compra masivamente
+        const mm = STATE.players['SYSTEM_MM'];
+        if(mm) {
+            const mmBuy = token.solPool * 0.5; // Compra un 50% de la pool actual para pumpearlo
+            const tkOut = calcTokensOut(mmBuy, token.solPool, token.tokenPool);
+            token.solPool += mmBuy; token.tokenPool -= tkOut;
+            mm.solBalance -= mmBuy; mm.portfolio[token.id] = (mm.portfolio[token.id] || 0) + tkOut;
+        }
+    } else if (realLiq >= BONDING_CURVE_LIMIT && !token.milestones.mRaydium) {
+        // DEX LISTING
+        token.milestones.mRaydium = true; 
+        milestoneMsg = `👑 $${token.ticker} COMPLETÓ LA CURVA Y SE FUE A RAYDIUM!`;
+        postMsg = `Acabo de ver a $${token.ticker} tocar Raydium. El dev es un chad. Enhorabuena. 🔥`;
+        if(creator) { 
+            creator.reputation = Math.min(100, (creator.reputation || 1) + 20); 
+            creator.followers += 500 + Math.floor(Math.random() * 500); 
+        }
     } else if (mcapUsd >= 1000000 && !token.milestones.m1m) { 
-        token.milestones.m1m = true; milestoneMsg = `🚀 $${token.ticker} ALCANZÓ $1M MCap!`; 
-        if(creator) creator.reputation = Math.min(100, (creator.reputation || 1) + 10); 
+        token.milestones.m1m = true; 
+        milestoneMsg = `🚀 $${token.ticker} ALCANZÓ $1M MCap!`; 
+        postMsg = `$${token.ticker} superó el Millón de Market Cap. ¿Quién más está holdeando? 💎`;
+        if(creator) { creator.followers += 100 + Math.floor(Math.random() * 100); }
     }
 
     if (!silent && milestoneMsg) {
         STATE.chat.unshift({ id: Date.now() + Math.random(), sender: 'System', text: milestoneMsg, sys: true });
         STATE.chat = STATE.chat.slice(0, 80);
+        if(postMsg) handlePostHost(postMsg, 'SYSTEM_MM');
     }
 }
 
@@ -910,9 +879,15 @@ function handleLaunchHost(name, ticker, image, devBuy, playerId) {
     };
     
     player.reputation = Math.min(100, (player.reputation || 1) + 0.5);
+    player.followers += 10; // Pequeño boost por lanzar
+
     const logMsg = `🚀 ${player.name} lanzó $${STATE.tokens[tokenId].ticker}`;
     STATE.chat.unshift({ id: Date.now(), sender: 'System', text: logMsg, sys: true });
     STATE.chat = STATE.chat.slice(0, 80);
+    
+    // Auto-post on DegenX
+    handlePostHost(`Acabo de desplegar $${STATE.tokens[tokenId].ticker}. El contrato es seguro. ¡Ape in! 🦍`, playerId);
+
     hostEmitAlert(playerId, logMsg, '🚀');
     if (devBuy > 0) handleTradeHost(tokenId, true, devBuy, playerId, false);
     broadcastState();
@@ -924,7 +899,9 @@ function handleBurnHost(tokenId, amount, playerId) {
     player.portfolio[tokenId] -= amount; token.initialSupply -= amount; 
     player.reputation = Math.min(100, (player.reputation || 1) + 1);
     STATE.chat.unshift({ id: Date.now(), sender: 'System', text: `🔥 ${player.name} quemó ${formatToken(amount)} $${token.ticker}`, sys: true });
-    STATE.chat = STATE.chat.slice(0, 80); broadcastState();
+    STATE.chat = STATE.chat.slice(0, 80); 
+    handlePostHost(`Acabo de mandar ${formatToken(amount)} $${token.ticker} al abismo. Menos supply, más precio. De nada. 🔥`, playerId);
+    broadcastState();
 }
 
 function handleGiftHost(targetId, asset, amount, senderId) {
@@ -948,8 +925,11 @@ function handleBuyLuxuryHost(itemId, playerId) {
     if (!player || !item || player.solBalance < item.price) return;
     player.solBalance -= item.price; player.luxuries = [...(player.luxuries || []), item.icon];
     player.reputation = Math.min(100, (player.reputation || 1) + item.rep);
+    player.followers += item.rep * 10; // Presumir da seguidores
     STATE.chat.unshift({ id: Date.now(), sender: 'System', text: `🛒 ${player.name} presumió su nuevo ${item.name} ${item.icon}`, sys: true });
-    STATE.chat = STATE.chat.slice(0, 80); broadcastState();
+    STATE.chat = STATE.chat.slice(0, 80); 
+    handlePostHost(`Flexeando mi nuevo ${item.name} ${item.icon}. Gracias por la liquidez plebeyos. 💸`, playerId);
+    broadcastState();
 }
 
 function handleChatHost(msg, playerId, isSys = false) {
@@ -972,15 +952,14 @@ function startBotBrain() {
         let didTrade = false;
 
         activeBots.forEach(bot => {
-            // MOVIMIENTO EN EL MUNDO 2D (Solo si el mapa está activo)
-            if (STATE.roomConfig.hasMap && bot.x !== undefined && bot.y !== undefined) {
-                if(Math.random() < 0.4) {
-                    let nextX = bot.x + (Math.random() * 80 - 40);
-                    let nextY = bot.y + (Math.random() * 80 - 40);
-                    const mapW = STATE.worldMap ? STATE.worldMap.width : 10000;
-                    const mapH = STATE.worldMap ? STATE.worldMap.height : 10000;
-                    bot.x = Math.max(20, Math.min(mapW - 20, nextX));
-                    bot.y = Math.max(20, Math.min(mapH - 20, nextY));
+            // Posting aleatorio en DegenX
+            if(tokenKeys.length > 0 && Math.random() < 0.02) {
+                const randomT = STATE.tokens[tokenKeys[Math.floor(Math.random() * tokenKeys.length)]];
+                const holding = bot.portfolio[randomT.id];
+                if(holding && holding > 0) {
+                    handlePostHost(`Apeando fuerte en $${randomT.ticker}. Este es el próximo 100x garantizado. No digan que no avisé.`, bot.id);
+                } else if(Math.random() < 0.3) {
+                    handlePostHost(`¿Están viendo $${randomT.ticker}? Gráfico alcista, me gusta. 👀`, bot.id);
                 }
             }
 
@@ -1012,7 +991,12 @@ function startBotBrain() {
                     if (bot.strategy === 'Sniper') return ageMs < 120000;
                     if (bot.strategy === 'Degen' || bot.strategy === 'PaperHands') return true; 
                     if (creatorRep < 10 && bot.strategy !== 'RugPuller') return false; 
-                    if (Math.random() > 0.4) return false; 
+                    
+                    // SOCIAL MULTIPLIER (Los bots compran basándose en la influencia)
+                    let hypeMulti = calculateHypeMultiplier(t.ticker);
+                    const baseProb = 0.4;
+                    if (Math.random() > (baseProb * hypeMulti)) return false; 
+
                     if (bot.strategy === 'Scalper') return (t.solPool - VIRTUAL_USD_RESERVE) > 2; 
                     if (bot.strategy === 'Hodler') return ageMs > 60000 && (t.solPool - VIRTUAL_USD_RESERVE) > 5;
                     if (bot.strategy === 'Whale') return (t.solPool - VIRTUAL_USD_RESERVE) > 10; 
@@ -1043,384 +1027,14 @@ function startBotBrain() {
     }, 1500); 
 }
 
-// ==========================================
-// 2D WORLD ENGINE (CLIENTE Y COLISIONES)
-// ==========================================
-function startWorldEngine() {
-    if(!STATE.roomConfig.hasMap) return;
-    if (worldAnimFrame) cancelAnimationFrame(worldAnimFrame);
-    if (worldMoveInterval) clearInterval(worldMoveInterval);
-    
-    worldMoveInterval = setInterval(() => {
-        if (STATE.activeTab !== 'world' || STATE.gameState !== 'playing') return;
-        const me = STATE.players[STATE.myProfile.id];
-        if(!me) return;
-        
-        let moved = false;
-        
-        // INTERACCIÓN (Tecla E)
-        if (INPUT_KEYS.e && !keyEToggled) {
-            keyEToggled = true;
-            if (me.mountedId) {
-                const car = (STATE.worldMap?.objects || []).find(o => o.id === me.mountedId);
-                if (car) {
-                    me.x = car.x - 30; 
-                    me.y = car.y + car.h / 2;
-                }
-                me.mountedId = null;
-                moved = true;
-            } else {
-                let closestCar = null;
-                let closestScriptObj = null;
-                let minDistCar = 150; 
-                let minDistScript = 150; 
-                
-                (STATE.worldMap?.objects || []).forEach(obj => {
-                    let cx = obj.x + obj.w/2;
-                    let cy = obj.y + obj.h/2;
-                    let dist = Math.hypot(me.x - cx, me.y - cy);
-                    
-                    if (obj.type === 'car' && dist < minDistCar) { minDistCar = dist; closestCar = obj; }
-                    else if (obj.type !== 'trigger' && obj.type !== 'car' && obj.script && obj.script.trim() !== '' && dist < minDistScript) { 
-                        minDistScript = dist; closestScriptObj = obj; 
-                    }
-                });
-                
-                if (closestCar) {
-                    me.mountedId = closestCar.id;
-                    moved = true;
-                } else if (closestScriptObj) {
-                    executeScript(closestScriptObj.script, closestScriptObj);
-                }
-            }
-        } else if (!INPUT_KEYS.e) {
-            keyEToggled = false;
-        }
-
-        // LÓGICA DE MOVIMIENTO
-        if (me.mountedId) {
-            const car = (STATE.worldMap?.objects || []).find(o => o.id === me.mountedId);
-            if (car) {
-                let nextX = car.x; let nextY = car.y;
-                let spd = car.speed && car.speed > 0 ? car.speed : 25; 
-
-                if(INPUT_KEYS.arrowup || INPUT_KEYS.w) { nextY -= spd; moved = true; }
-                if(INPUT_KEYS.arrowdown || INPUT_KEYS.s) { nextY += spd; moved = true; }
-                if(INPUT_KEYS.arrowleft || INPUT_KEYS.a) { nextX -= spd; moved = true; }
-                if(INPUT_KEYS.arrowright || INPUT_KEYS.d) { nextX += spd; moved = true; }
-
-                const mapW = STATE.worldMap ? STATE.worldMap.width : 10000;
-                const mapH = STATE.worldMap ? STATE.worldMap.height : 10000;
-                nextX = Math.max(0, Math.min(mapW - car.w, nextX));
-                nextY = Math.max(0, Math.min(mapH - car.h, nextY));
-
-                let canMoveX = true, canMoveY = true;
-                (STATE.worldMap?.objects || []).forEach(obj => {
-                    if ((obj.type === 'wall' || obj.type === 'door') && obj.id !== car.id) {
-                        if (nextX + car.w > obj.x && nextX < obj.x + obj.w && car.y + car.h > obj.y && car.y < obj.y + obj.h) canMoveX = false;
-                        if (car.x + car.w > obj.x && car.x < obj.x + obj.w && nextY + car.h > obj.y && nextY < obj.y + obj.h) canMoveY = false;
-                    }
-                });
-
-                if(canMoveX) car.x = nextX;
-                if(canMoveY) car.y = nextY;
-
-                me.x = car.x + car.w/2;
-                me.y = car.y + car.h/2;
-            } else {
-                me.mountedId = null; 
-            }
-        } else {
-            let nextX = me.x; let nextY = me.y;
-            let spd = me.speed || 2;
-
-            if(INPUT_KEYS.arrowup || INPUT_KEYS.w) { nextY -= spd; moved = true; }
-            if(INPUT_KEYS.arrowdown || INPUT_KEYS.s) { nextY += spd; moved = true; }
-            if(INPUT_KEYS.arrowleft || INPUT_KEYS.a) { nextX -= spd; moved = true; }
-            if(INPUT_KEYS.arrowright || INPUT_KEYS.d) { nextX += spd; moved = true; }
-
-            const mapW = STATE.worldMap ? STATE.worldMap.width : 10000;
-            const mapH = STATE.worldMap ? STATE.worldMap.height : 10000;
-            nextX = Math.max(15, Math.min(mapW - 15, nextX));
-            nextY = Math.max(15, Math.min(mapH - 15, nextY));
-
-            let canMoveX = true, canMoveY = true;
-            (STATE.worldMap?.objects || []).forEach(obj => {
-                if (obj.type === 'wall' || obj.type === 'car' || obj.type === 'door') { 
-                    if (nextX + 15 > obj.x && nextX - 15 < obj.x + obj.w && me.y + 15 > obj.y && me.y - 15 < obj.y + obj.h) canMoveX = false;
-                    if (me.x + 15 > obj.x && me.x - 15 < obj.x + obj.w && nextY + 15 > obj.y && nextY - 15 < obj.y + obj.h) canMoveY = false;
-                }
-                
-                if (obj.type === 'trigger') {
-                    if (me.x > obj.x && me.x < obj.x + obj.w && me.y > obj.y && me.y < obj.y + obj.h) {
-                        if (window.inTriggerZone !== obj.id) {
-                            window.inTriggerZone = obj.id;
-                            executeScript(obj.script, obj);
-                        }
-                    } else if (window.inTriggerZone === obj.id) {
-                        window.inTriggerZone = null;
-                    }
-                }
-            });
-
-            if(canMoveX) me.x = nextX;
-            if(canMoveY) me.y = nextY;
-        }
-
-        // Tasa de refresco optimizada a 20 FPS para reducir lag 
-        if(moved && Date.now() - lastMoveBroadcast > 50) { 
-            let carParams = {};
-            if(me.mountedId) {
-                const car = (STATE.worldMap?.objects || []).find(o => o.id === me.mountedId);
-                if(car) { carParams = { carX: car.x, carY: car.y }; }
-            }
-            dispatchAction('ACTION_MOVE', {x: me.x, y: me.y, mountedId: me.mountedId, ...carParams});
-            lastMoveBroadcast = Date.now();
-        }
-    }, 1000/60);
-
-    renderWorldLoop();
-}
-
-function executeScript(scriptContent, targetObj) {
-    if (!scriptContent || scriptContent.trim() === '') return;
-    try {
-        const scriptFunc = new Function('obj', 'me', 'addToast', 'mapData', 'STATE', 'dispatchAction', scriptContent);
-        const me = STATE.players[STATE.myProfile.id];
-        
-        scriptFunc(targetObj, me, window.addToast, STATE.worldMap, window.STATE, window.dispatchAction);
-        
-        if (targetObj && targetObj.id) {
-            dispatchAction('ACTION_MAP_UPDATE', { id: targetObj.id, x: targetObj.x, y: targetObj.y, color: targetObj.color });
-        }
-        
-        if (!STATE.roomConfig.isHost) {
-            dispatchAction('ACTION_PLAYER_SYNC', { solBalance: me.solBalance, reputation: me.reputation, speed: me.speed });
-        }
-    } catch(e) {
-        console.error("Script Error:", e);
-        addToast("Error Script: " + e.message, "❌");
-    }
-}
-
-function getTexture(url) {
-    if (!url) return null;
-    if (textureCache[url]) return textureCache[url];
-    const img = new Image(); img.src = url; textureCache[url] = img;
-    img.onload = () => {}; return img;
-}
-
-function renderWorldLoop() {
-    if(!STATE.roomConfig.hasMap) return;
-    worldAnimFrame = requestAnimationFrame(renderWorldLoop);
-    if (STATE.activeTab !== 'world') return;
-    
-    const canvas = document.getElementById('world-canvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    
-    canvas.width = canvas.parentElement.clientWidth;
-    canvas.height = canvas.parentElement.clientHeight;
-
-    const me = STATE.players[STATE.myProfile.id];
-    if(!me) return;
-    
-    const cam = { zoom: 1 };
-    const cx = canvas.width / 2 - (me.x || 5000);
-    const cy = canvas.height / 2 - (me.y || 5000);
-    const mapW = STATE.worldMap ? STATE.worldMap.width : 10000;
-    const mapH = STATE.worldMap ? STATE.worldMap.height : 10000;
-
-    ctx.fillStyle = '#020617';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.save();
-    ctx.translate(cx, cy);
-
-    ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, mapW, mapH);
-    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 5; ctx.strokeRect(0, 0, mapW, mapH);
-    
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1;
-    for(let i=0; i<mapW; i+=100) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, mapH); ctx.stroke(); }
-    for(let i=0; i<mapH; i+=100) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(mapW, i); ctx.stroke(); }
-
-    let interactableCar = null;
-    let interactableScriptObj = null;
-
-    if (STATE.worldMap && STATE.worldMap.objects) {
-        STATE.worldMap.objects.forEach(obj => {
-            ctx.save();
-            ctx.translate(obj.x, obj.y);
-            
-            if(obj.x + cx < -obj.w || obj.x + cx > canvas.width || obj.y + cy < -obj.h || obj.y + cy > canvas.height) {
-                ctx.restore(); return;
-            }
-
-            ctx.save(); 
-            if (obj.type === 'circle') {
-                ctx.beginPath(); ctx.arc(obj.w/2, obj.h/2, obj.w/2, 0, Math.PI*2); ctx.clip();
-            } else if (obj.type === 'triangle') {
-                ctx.beginPath(); ctx.moveTo(obj.w/2, 0); ctx.lineTo(obj.w, obj.h); ctx.lineTo(0, obj.h); ctx.closePath(); ctx.clip();
-            }
-
-            const img = getTexture(obj.texture);
-            if (img && img.complete && obj.type !== 'light' && obj.type !== 'car' && obj.type !== 'spawn') {
-                const repeats = obj.textureRepeat || 1;
-                if (repeats > 1) {
-                    const pattern = ctx.createPattern(img, 'repeat');
-                    if (pattern) {
-                        const scaleX = (obj.w / repeats) / img.width;
-                        const scaleY = (obj.h / repeats) / img.height;
-                        pattern.setTransform(new DOMMatrix().scale(scaleX, scaleY));
-                        ctx.fillStyle = pattern;
-                        ctx.fillRect(0, 0, obj.w, obj.h);
-                    }
-                } else {
-                    ctx.drawImage(img, 0, 0, obj.w, obj.h);
-                }
-            } else {
-                ctx.fillStyle = obj.color;
-                if (obj.type === 'light') {
-                    let r = obj.w/2;
-                    let grad = ctx.createRadialGradient(r, r, 0, r, r, r);
-                    let baseColor = obj.color;
-                    if(baseColor.startsWith('#')) {
-                        const hex = baseColor.replace('#','');
-                        const rC = parseInt(hex.substring(0,2), 16); const gC = parseInt(hex.substring(2,4), 16); const bC = parseInt(hex.substring(4,6), 16);
-                        baseColor = `rgba(${rC},${gC},${bC},0.8)`;
-                    }
-                    grad.addColorStop(0, baseColor); grad.addColorStop(1, 'transparent');
-                    ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(r, r, r, 0, Math.PI*2); ctx.fill();
-                } else if (obj.type === 'car') {
-                    const res = obj.resolution || 8;
-                    if (obj.pixelData && obj.pixelData.length === res * res) {
-                        let pW = obj.w / res; let pH = obj.h / res;
-                        for(let i=0; i<res*res; i++) {
-                            if(obj.pixelData[i]) {
-                                ctx.fillStyle = obj.pixelData[i];
-                                ctx.fillRect((i%res)*pW, Math.floor(i/res)*pH, pW+0.5, pH+0.5); 
-                            }
-                        }
-                    } else {
-                        ctx.fillRect(0, 0, obj.w, obj.h);
-                        ctx.fillStyle = '#000'; ctx.fillRect(obj.w*0.1, obj.h*0.6, obj.w*0.8, obj.h*0.3);
-                    }
-                } else {
-                    ctx.fillRect(0, 0, obj.w, obj.h); 
-                }
-            }
-            ctx.restore();
-
-            if (obj.type === 'wall' || obj.type === 'door' || obj.type === 'car') {
-                ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 2;
-                ctx.strokeRect(0, 0, obj.w, obj.h);
-            }
-
-            if (!me.mountedId) {
-                let center_x = obj.x + obj.w/2; let center_y = obj.y + obj.h/2;
-                if (Math.hypot(me.x - center_x, me.y - center_y) < 150) {
-                    if (obj.type === 'car') interactableCar = obj;
-                    else if (obj.type !== 'trigger' && obj.type !== 'car' && obj.script && obj.script.trim() !== '') interactableScriptObj = obj;
-                }
-            }
-
-            ctx.restore();
-        });
-    }
-
-    Object.values(STATE.players).forEach(p => {
-        if(p.isBot || p.id === 'SYSTEM_MM') return; 
-        
-        if (p.mountedId) {
-            const car = (STATE.worldMap?.objects || []).find(o => o.id === p.mountedId);
-            if (car) {
-                ctx.font = `${car.w/3}px Arial`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.fillText(p.avatar, car.x + car.w/2, car.y + car.h/2);
-            }
-            return; 
-        }
-
-        const px = (p.x || 1500);
-        const py = (p.y || 1500);
-        
-        if(px + cx < -100 || px + cx > canvas.width + 100 || py + cy < -100 || py + cy > canvas.height + 100) return;
-
-        ctx.fillStyle = 'rgba(0,0,0,0.5)';
-        ctx.beginPath(); ctx.ellipse(px, py + 10, 15, 5, 0, 0, Math.PI*2); ctx.fill();
-
-        ctx.font = '30px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(p.avatar, px, py);
-
-        if (p.luxuries && p.luxuries.length > 0) {
-            ctx.font = '24px Arial';
-            p.luxuries.slice(0, 3).forEach((lux, idx) => {
-                ctx.fillText(lux, px + 35 + (idx * 20), py);
-            });
-        }
-
-        const r = getRank(p.solBalance + (p.solStaked||0));
-        ctx.font = '12px "JetBrains Mono"';
-        ctx.fillStyle = p.id === STATE.myProfile.id ? '#10b981' : '#e2e8f0';
-        ctx.fillText(`${r.emoji} ${p.name}`, px, py + 25);
-    });
-
-    ctx.restore();
-
-    if (!me.mountedId) {
-        if (interactableCar) {
-            ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(canvas.width/2 - 40, canvas.height/2 - 45, 80, 20);
-            ctx.fillStyle = '#10b981'; ctx.font = '12px "JetBrains Mono"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText("[E] Subir", canvas.width/2, canvas.height/2 - 35);
-        } else if (interactableScriptObj) {
-            ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(canvas.width/2 - 50, canvas.height/2 - 45, 100, 20);
-            ctx.fillStyle = '#a855f7'; ctx.font = '12px "JetBrains Mono"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText("[E] Interactuar", canvas.width/2, canvas.height/2 - 35);
-        }
-    }
-}
-
 // CLIENT ACTIONS DISPATCHER
 function dispatchAction(type, payload) {
     if (STATE.roomConfig.isHost) {
-        if(type==='ACTION_MOVE' && STATE.players[STATE.myProfile.id]) { 
-            STATE.players[STATE.myProfile.id].x = payload.x; 
-            STATE.players[STATE.myProfile.id].y = payload.y; 
-            STATE.players[STATE.myProfile.id].mountedId = payload.mountedId;
-            if (payload.mountedId && STATE.worldMap && STATE.worldMap.objects) {
-                const car = STATE.worldMap.objects.find(o => o.id === payload.mountedId);
-                if (car && payload.carX !== undefined && payload.carY !== undefined) {
-                    car.x = payload.carX; car.y = payload.carY;
-                }
-            }
-            // Emite su propio movimiento sin enviar todo el STATE_SYNC
-            if (!STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
-                mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify({ type: 'SYNC_MOVE', senderId: STATE.myProfile.id, payload }));
-            }
-        }
-        if(type==='ACTION_MAP_UPDATE') {
-            if (STATE.worldMap && STATE.worldMap.objects) {
-                const obj = STATE.worldMap.objects.find(o => o.id === payload.id);
-                if (obj) { 
-                    if(payload.x!==undefined) obj.x=payload.x; 
-                    if(payload.y!==undefined) obj.y=payload.y; 
-                    if(payload.color!==undefined) obj.color=payload.color; 
-                    broadcastState();
-                }
-            }
-        }
-        if (type === 'ACTION_PLAYER_SYNC') {
-            const senderId = STATE.myProfile.id;
-            if (STATE.players[senderId]) {
-                if (payload.solBalance !== undefined) STATE.players[senderId].solBalance = payload.solBalance;
-                if (payload.reputation !== undefined) STATE.players[senderId].reputation = payload.reputation;
-                if (payload.speed !== undefined) STATE.players[senderId].speed = payload.speed;
-                broadcastState();
-            }
-        }
         if(type==='ACTION_TRADE') handleTradeHost(payload.tokenId, payload.isBuy, payload.amount, STATE.myProfile.id);
         if(type==='ACTION_LAUNCH') handleLaunchHost(payload.name, payload.ticker, payload.image, payload.devBuy, STATE.myProfile.id);
         if(type==='ACTION_BURN') handleBurnHost(payload.tokenId, payload.amount, STATE.myProfile.id);
         if(type==='ACTION_CHAT') handleChatHost(payload.msg, STATE.myProfile.id, false);
+        if(type==='ACTION_POST') handlePostHost(payload.text, STATE.myProfile.id);
         if(type==='ACTION_GIFT') handleGiftHost(payload.to, payload.asset, payload.amount, STATE.myProfile.id);
         if(type==='ACTION_BUY_LUXURY') handleBuyLuxuryHost(payload.itemId, STATE.myProfile.id);
         if(type==='ACTION_ADD_BOT') { window.adjustBots(Object.keys(STATE.players).filter(k=>STATE.players[k].isBot && k!=='SYSTEM_MM').length + 1); }
@@ -1428,17 +1042,19 @@ function dispatchAction(type, payload) {
             const p = STATE.players[STATE.myProfile.id];
             if(p && p.solBalance >= payload.amount && payload.amount > 0) {
                 p.solBalance -= payload.amount; p.reputation = Math.min(100, (p.reputation || 1) + payload.amount * 5);
-                handleChatHost(`💖 ${p.name} quemó ${formatSOL(payload.amount)} por beneficencia!`, STATE.myProfile.id, true); broadcastState();
+                p.followers += Math.floor(payload.amount * 10);
+                handleChatHost(`💖 ${p.name} quemó ${formatUSD(payload.amount)} por beneficencia!`, STATE.myProfile.id, true); broadcastState();
             }
         }
         if(type==='ACTION_AIRDROP') {
             const p = STATE.players[STATE.myProfile.id];
             if(p && p.solBalance >= payload.amount && payload.amount > 0) {
                 p.solBalance -= payload.amount; p.reputation = Math.min(100, (p.reputation || 1) + payload.amount * 8);
+                p.followers += Math.floor(payload.amount * 20);
                 const humans = Object.values(STATE.players).filter(pl => !pl.isBot && pl.id !== STATE.myProfile.id);
                 if (humans.length > 0) {
                     const split = payload.amount / humans.length; humans.forEach(h => { h.solBalance += split; });
-                    handleChatHost(`🚁 AIRDROP MASIVO: ${p.name} repartió ${formatSOL(payload.amount)} a ${humans.length} degens!`, STATE.myProfile.id, true);
+                    handleChatHost(`🚁 AIRDROP MASIVO: ${p.name} repartió ${formatUSD(payload.amount)} a ${humans.length} degens!`, STATE.myProfile.id, true);
                 } else { handleChatHost(`🚁 ${p.name} intentó un Airdrop, pero no hay humanos. Se quemaron.`, STATE.myProfile.id, true); }
                 broadcastState();
             }
@@ -1447,8 +1063,8 @@ function dispatchAction(type, payload) {
             const p = STATE.players[STATE.myProfile.id];
             if(p && p.solBalance >= payload.amount && payload.amount > 0) {
                 p.solBalance -= payload.amount;
-                if(Math.random() > 0.5) { p.solBalance += (payload.amount * 2); handleChatHost(`🎰 ¡${p.name} ganó ${formatSOL(payload.amount)} en el Casino! x2`, STATE.myProfile.id, true); } 
-                else { handleChatHost(`🎰 ${p.name} fue liquidado y perdió ${formatSOL(payload.amount)} en el Casino. F`, STATE.myProfile.id, true); }
+                if(Math.random() > 0.5) { p.solBalance += (payload.amount * 2); handleChatHost(`🎰 ¡${p.name} ganó ${formatUSD(payload.amount)} en el Casino! x2`, STATE.myProfile.id, true); } 
+                else { handleChatHost(`🎰 ${p.name} fue liquidado y perdió ${formatUSD(payload.amount)} en el Casino. F`, STATE.myProfile.id, true); }
                 broadcastState();
             }
         }
@@ -1467,9 +1083,9 @@ function dispatchAction(type, payload) {
     } else {
         const packet = { type, payload, senderId: STATE.myProfile.id };
         if (window.dataConn && window.dataConn.open) {
-            window.dataConn.send(packet); // Vía rápida P2P (~10ms)
+            window.dataConn.send(packet); 
         } else if(mqttClient && mqttClient.connected) {
-            mqttClient.publish(`dgn/${STATE.roomConfig.code}/in`, JSON.stringify(packet)); // Fallback MQTT (~300ms)
+            mqttClient.publish(`dgn/${STATE.roomConfig.code}/in`, JSON.stringify(packet)); 
         }
     }
 }
@@ -1513,7 +1129,6 @@ function updateDynamicDOM() {
         else tickerEl.innerHTML = "EL MERCADO ESTÁ VACÍO. SÉ EL PRIMERO EN CREAR UN TOKEN.";
     }
     
-    // Chat Engine
     const renderChatMessages = (containerId, limit, hideSys) => {
         const cEl = document.getElementById(containerId);
         if (cEl) {
@@ -1529,21 +1144,16 @@ function updateDynamicDOM() {
                     if(sp) { const rank = getRank(sp.solBalance + (sp.solStaked||0)); senderTag = `<span class="opacity-70">${rank.emoji}</span> ${msg.sender}`; }
                 }
                 
-                if (containerId === 'world-chat-messages') {
-                    return `<div class="text-white drop-shadow-md"><span class="font-bold text-emerald-400">${senderTag}:</span> <span class="break-words">${msg.text}</span></div>`;
-                } else {
-                    return `
-                    <div class="p-3 rounded-xl ${msg.sys ? 'text-slate-400 font-mono text-[10px] md:text-xs border border-slate-800/50 bg-slate-950/80 shadow-inner' : 'bg-slate-800/80 text-slate-200 border border-slate-700/50'}">
-                        ${!msg.sys ? `<div class="font-bold text-emerald-400 text-xs mb-1 flex items-center">${senderTag}</div>` : ''}
-                        ${isImg ? `<img src="${msg.text}" class="max-w-full rounded-lg mt-2 cursor-pointer border border-slate-700 hover:border-emerald-500 transition-colors" onclick="window.open('${msg.text}', '_blank')"/>` : `<div class="leading-relaxed break-words">${msg.text}</div>`}
-                    </div>`;
-                }
+                return `
+                <div class="p-3 rounded-xl ${msg.sys ? 'text-slate-400 font-mono text-[10px] md:text-xs border border-slate-800/50 bg-slate-950/80 shadow-inner' : 'bg-slate-800/80 text-slate-200 border border-slate-700/50'}">
+                    ${!msg.sys ? `<div class="font-bold text-emerald-400 text-xs mb-1 flex items-center">${senderTag}</div>` : ''}
+                    ${isImg ? `<img src="${msg.text}" class="max-w-full rounded-lg mt-2 cursor-pointer border border-slate-700 hover:border-emerald-500 transition-colors" onclick="window.open('${msg.text}', '_blank')"/>` : `<div class="leading-relaxed break-words">${msg.text}</div>`}
+                </div>`;
             }).join('') || `<div class="text-center text-slate-500 py-10 italic">Aún no hay mensajes.</div>`;
         }
     };
 
     renderChatMessages('chat-list', 80, false);
-    if(STATE.activeTab === 'world') renderChatMessages('world-chat-messages', 20, true);
 
     const el = document.getElementById('tab-content'); if (!el) return;
     let currentTabId = STATE.selectedTokenId ? 'detail-' + STATE.selectedTokenId + '-' + STATE.tradeType : STATE.activeTab;
@@ -1551,6 +1161,7 @@ function updateDynamicDOM() {
     if (STATE._renderedTabId !== currentTabId) {
         if (STATE.selectedTokenId) el.innerHTML = RenderTokenDetailSkeleton();
         else if (STATE.activeTab === 'market') el.innerHTML = RenderMarketSkeleton();
+        else if (STATE.activeTab === 'social') el.innerHTML = RenderSocialSkeleton();
         else if (STATE.activeTab === 'portfolio') el.innerHTML = RenderLeaderboardSkeleton();
         else if (STATE.activeTab === 'shop') el.innerHTML = RenderShop();
         else if (STATE.activeTab === 'launch') el.innerHTML = RenderLaunch();
@@ -1558,12 +1169,12 @@ function updateDynamicDOM() {
         else if (STATE.activeTab === 'casino') el.innerHTML = RenderCasino();
         else if (STATE.activeTab === 'bank') el.innerHTML = RenderBank();
         else if (STATE.activeTab === 'charity') el.innerHTML = RenderCharity();
-        else if (STATE.activeTab === 'world' && STATE.roomConfig.hasMap) el.innerHTML = RenderWorld();
         STATE._renderedTabId = currentTabId;
     }
 
     if (STATE.selectedTokenId) UpdateTokenDetailDynamic();
     else if (STATE.activeTab === 'market') UpdateMarketDynamic();
+    else if (STATE.activeTab === 'social') UpdateSocialDynamic();
     else if (STATE.activeTab === 'portfolio') UpdateLeaderboardDynamic();
     else if (STATE.activeTab === 'streams') UpdateStreamsDynamic();
 }
@@ -1576,7 +1187,7 @@ function ViewLobby() {
                 <div>
                     <div class="flex items-center gap-2 mb-1">
                         <h2 class="text-xl md:text-2xl font-black text-white">${STATE.roomConfig.name}</h2>
-                        ${STATE.roomConfig.hasMap ? `<span class="bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-widest flex items-center gap-1">${Icons.Map} Mapa</span>` : `<span class="bg-orange-500/20 text-orange-400 border border-orange-500/30 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-widest flex items-center gap-1">${Icons.Chart} Solo Trade</span>`}
+                        <span class="bg-orange-500/20 text-orange-400 border border-orange-500/30 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-widest flex items-center gap-1">${Icons.Chart} Trading Terminal</span>
                     </div>
                     ${!STATE.roomConfig.isOffline ? `
                     <div class="text-slate-500 text-sm flex items-center flex-wrap gap-2">
@@ -1623,13 +1234,6 @@ function ViewLobby() {
                     ${STATE.roomConfig.isHost ? `
                     <div class="bg-slate-950 border border-slate-800 rounded-2xl p-6 h-fit shrink-0">
                         <h3 class="text-xs font-black text-slate-500 uppercase tracking-widest mb-6 flex items-center gap-2">${Icons.Settings} Opciones del Servidor</h3>
-                        
-                        ${STATE.roomConfig.hasMap ? `
-                        <!-- MAP LOADER -->
-                        <div class="bg-slate-900 border border-slate-700 rounded-xl p-4 mb-6">
-                            <label class="text-[10px] text-emerald-400 uppercase tracking-widest font-black block mb-2">Importar Mapa (.json)</label>
-                            <input type="file" accept=".json" onchange="window.loadCustomMap(event)" class="text-[10px] text-slate-400 file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-emerald-500/10 file:text-emerald-400 hover:file:bg-emerald-500/20 cursor-pointer w-full"/>
-                        </div>` : ''}
 
                         <label class="block mb-6">
                             <div class="flex justify-between text-[10px] text-slate-400 font-bold mb-2 uppercase tracking-wide"><span>Max Actores:</span><span class="${STATE.roomConfig.isOffline ? 'text-purple-400' : 'text-emerald-400'} font-mono" id="lbl-maxplayers">${STATE.roomConfig.maxPlayers}</span></div>
@@ -1681,7 +1285,7 @@ function ViewGame() {
 
             <nav class="bg-slate-900 border-b border-slate-800 p-2.5 md:p-5 flex justify-between items-center shrink-0">
                 <div class="hidden md:flex gap-3 xl:gap-6 overflow-x-auto hide-scrollbar">
-                    ${STATE.roomConfig.hasMap ? `<button onclick="switchTab('world');" class="font-black text-[10px] uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='world' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Globe} Mundo 2D</button>` : ''}
+                    <button onclick="switchTab('social');" class="font-black text-[10px] uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='social' ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Megaphone} DegenX</button>
                     <button onclick="switchTab('market');" class="font-black text-[10px] uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='market' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Chart} Mercado</button>
                     <button onclick="switchTab('portfolio');" class="font-black text-[10px] uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='portfolio' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Users} Top</button>
                     <button onclick="switchTab('shop');" class="font-black text-[10px] uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='shop' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.PieChart} Lujos</button>
@@ -1720,14 +1324,14 @@ function ViewGame() {
                 </div>
             </nav>
 
-            <div id="tab-content" class="flex-1 overflow-y-auto ${STATE.activeTab === 'world' ? 'p-0' : 'p-4 md:p-6'} relative min-h-0">
+            <div id="tab-content" class="flex-1 overflow-y-auto p-4 md:p-6 relative min-h-0">
                 <!-- Skeletons go here -->
             </div>
         </main>
         
         <!-- MOBILE BOTTOM NAV -->
         <div class="md:hidden absolute bottom-0 left-0 w-full bg-slate-950 border-t border-slate-800 flex overflow-x-auto hide-scrollbar gap-1 p-2 z-50 shadow-[0_-10px_20px_rgba(0,0,0,0.5)]">
-           ${STATE.roomConfig.hasMap ? `<button onclick="switchTab('world');" class="flex-1 min-w-[55px] flex flex-col items-center justify-center gap-0.5 py-1 ${STATE.activeTab==='world'?'text-emerald-400':'text-slate-500'}">${Icons.Globe}<span class="text-[8px] font-bold uppercase">Mundo</span></button>` : ''}
+           <button onclick="switchTab('social');" class="flex-1 min-w-[55px] flex flex-col items-center justify-center gap-0.5 py-1 ${STATE.activeTab==='social'?'text-blue-400':'text-slate-500'}">${Icons.Megaphone}<span class="text-[8px] font-bold uppercase">DegenX</span></button>
            <button onclick="switchTab('market');" class="flex-1 min-w-[55px] flex flex-col items-center justify-center gap-0.5 py-1 ${STATE.activeTab==='market'?'text-emerald-400':'text-slate-500'}">${Icons.Chart}<span class="text-[8px] font-bold uppercase">Mercado</span></button>
            <button onclick="switchTab('portfolio');" class="flex-1 min-w-[55px] flex flex-col items-center justify-center gap-0.5 py-1 ${STATE.activeTab==='portfolio'?'text-emerald-400':'text-slate-500'}">${Icons.Users}<span class="text-[8px] font-bold uppercase">Top</span></button>
            <button onclick="switchTab('shop');" class="flex-1 min-w-[55px] flex flex-col items-center justify-center gap-0.5 py-1 ${STATE.activeTab==='shop'?'text-emerald-400':'text-slate-500'}">${Icons.PieChart}<span class="text-[8px] font-bold uppercase">Lujos</span></button>
@@ -1741,39 +1345,70 @@ function ViewGame() {
 
 // ---------------- SKELETONS Y PARTIALS DINÁMICOS ----------------
 
-function RenderWorld() {
+// --- RED SOCIAL DEGENX ---
+function RenderSocialSkeleton() {
+    const me = STATE.players[STATE.myProfile.id] || { followers: 0 };
     return `
-    <div class="relative w-full h-full bg-[#020617] overflow-hidden flex flex-col">
-        <canvas id="world-canvas" class="w-full flex-1 touch-none outline-none" tabindex="1"></canvas>
-        
-        <!-- Chat del Mundo 2D -->
-        <div class="absolute bottom-[70px] md:bottom-6 left-4 w-[calc(100%-2rem)] md:w-80 flex flex-col gap-2 z-20 pointer-events-none">
-            <div id="world-chat-messages" class="bg-black/60 backdrop-blur-md rounded-xl p-3 h-40 overflow-y-auto flex flex-col-reverse text-[10px] md:text-xs space-y-1 space-y-reverse border border-slate-800 pointer-events-auto shadow-xl"></div>
-            <form onsubmit="event.preventDefault(); const i = document.getElementById('world-chat-input'); if(i && i.value) { dispatchAction('ACTION_CHAT', { msg: i.value }); i.value = ''; }" class="flex gap-2 pointer-events-auto">
-                <input id="world-chat-input" autocomplete="off" placeholder="Chatear en el mapa..." class="flex-1 min-w-0 bg-black/60 backdrop-blur-md border border-slate-700/50 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-emerald-500 text-white transition-colors shadow-lg" />
-                <button type="submit" class="bg-emerald-500/80 backdrop-blur-md text-slate-950 px-3 rounded-xl font-bold hover:bg-emerald-400 transition-colors shadow-lg">→</button>
+    <div class="max-w-3xl mx-auto flex flex-col h-full animate-fade-in">
+        <div class="flex items-center justify-between mb-4 md:mb-6 shrink-0">
+            <h1 class="text-2xl md:text-3xl font-black text-white flex items-center gap-2 tracking-tight"><span class="text-blue-500">${Icons.Megaphone}</span> DegenX</h1>
+            <div class="bg-blue-900/20 border border-blue-500/30 text-blue-400 px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-widest text-center shadow-inner">
+                Tus Seguidores<br><span class="text-lg md:text-xl font-black">${me.followers.toLocaleString()}</span>
+            </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-4 shrink-0 shadow-lg">
+            <form onsubmit="event.preventDefault(); const val=document.getElementById('social-input').value; if(val.trim()){ dispatchAction('ACTION_POST', {text: val}); document.getElementById('social-input').value=''; STATE.socialInput=''; }" class="flex flex-col gap-3">
+                <textarea id="social-input" rows="2" placeholder="¿Cuál es la próxima gema, ${STATE.myProfile.name}? Usa $TICKER para etiquetar monedas." value="${STATE.socialInput}" oninput="STATE.socialInput = this.value" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm md:text-base focus:outline-none focus:border-blue-500 transition-colors resize-none placeholder:text-slate-600"></textarea>
+                <div class="flex justify-between items-center">
+                    <span class="text-[9px] text-slate-500 uppercase font-bold tracking-widest">Postea para ganar influencia</span>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-black px-6 py-2 rounded-xl transition-colors shadow-[0_0_15px_rgba(37,99,235,0.3)] tracking-wider text-xs md:text-sm">Postear</button>
+                </div>
             </form>
         </div>
 
-        <!-- Controles Móviles D-PAD -->
-        <div class="absolute bottom-[70px] right-4 md:hidden w-32 h-32 grid grid-cols-3 grid-rows-3 gap-1 z-20 opacity-80 select-none pointer-events-auto">
-            <div></div>
-            <div class="dpad-btn" onpointerdown="INPUT_KEYS['arrowup']=true;" onpointerup="INPUT_KEYS['arrowup']=false;" onpointerleave="INPUT_KEYS['arrowup']=false;">▲</div>
-            <div></div>
-            <div class="dpad-btn" onpointerdown="INPUT_KEYS['arrowleft']=true;" onpointerup="INPUT_KEYS['arrowleft']=false;" onpointerleave="INPUT_KEYS['arrowleft']=false;">◀</div>
-            <div class="bg-emerald-500/20 rounded-xl border border-emerald-500/40 flex items-center justify-center font-black text-emerald-400 text-lg shadow-[0_0_10px_rgba(16,185,129,0.3)] touch-manipulation cursor-pointer" onpointerdown="INPUT_KEYS['e']=true;" onpointerup="INPUT_KEYS['e']=false;" onpointerleave="INPUT_KEYS['e']=false;">E</div>
-            <div class="dpad-btn" onpointerdown="INPUT_KEYS['arrowright']=true;" onpointerup="INPUT_KEYS['arrowright']=false;" onpointerleave="INPUT_KEYS['arrowright']=false;">▶</div>
-            <div></div>
-            <div class="dpad-btn" onpointerdown="INPUT_KEYS['arrowdown']=true;" onpointerup="INPUT_KEYS['arrowdown']=false;" onpointerleave="INPUT_KEYS['arrowdown']=false;">▼</div>
-            <div></div>
-        </div>
-
-        <div class="absolute top-4 left-4 bg-slate-900/80 backdrop-blur border border-slate-800 p-2 rounded-xl pointer-events-none z-10 shadow-lg">
-            <h3 class="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-0.5">${Icons.Globe} DegenWorld</h3>
-            <p class="text-[9px] text-slate-400 font-mono">Usa WASD o el D-Pad.<br>Botón E interactuar.</p>
-        </div>
+        <div id="social-feed" class="flex-1 overflow-y-auto space-y-3 pb-10 min-h-0 pr-1"></div>
     </div>`;
 }
+
+function UpdateSocialDynamic() {
+    const feed = document.getElementById('social-feed');
+    if(!feed) return;
+
+    if(!STATE.posts || STATE.posts.length === 0) {
+        feed.innerHTML = `<div class="text-center text-slate-600 py-10 font-bold flex flex-col items-center justify-center h-full"><span class="text-4xl mb-3 opacity-50">${Icons.Megaphone}</span>El timeline está vacío. Sé el primero en hacer un call.</div>`;
+        return;
+    }
+
+    feed.innerHTML = STATE.posts.map(p => {
+        const author = STATE.players[p.authorId];
+        const isBot = author ? author.isBot : false;
+        const followers = author ? author.followers.toLocaleString() : 0;
+        
+        // Formatear Tickers ($TOKEN)
+        const formattedText = p.text.replace(/\$([A-Z0-9]+)/g, (match, ticker) => {
+            const token = Object.values(STATE.tokens).find(t => t.ticker === ticker);
+            if(token) return `<span class="text-blue-400 hover:text-blue-300 cursor-pointer font-black" onclick="selectToken('${token.id}'); switchTab('market');">${match}</span>`;
+            return `<span class="text-slate-400 font-bold">${match}</span>`;
+        });
+
+        return `
+        <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-md hover:border-slate-700 transition-colors relative">
+            <div class="flex items-start gap-3">
+                <div class="text-3xl bg-slate-800 w-12 h-12 rounded-full flex items-center justify-center cursor-pointer shrink-0 border border-slate-700 shadow-inner" onclick="STATE.viewingProfileId='${p.authorId}'; STATE.giftTargetId=null; renderModal();">${p.authorAvatar}</div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-baseline gap-2 mb-1 flex-wrap">
+                        <span class="font-black text-white hover:underline cursor-pointer text-sm md:text-base" onclick="STATE.viewingProfileId='${p.authorId}'; STATE.giftTargetId=null; renderModal();">${p.authorName}</span>
+                        ${isBot ? `<span class="bg-purple-500/20 text-purple-400 border border-purple-500/30 text-[8px] px-1.5 py-0.5 rounded uppercase font-bold tracking-widest">${p.authorId==='SYSTEM_MM'?'News':'Bot'}</span>` : ''}
+                        <span class="text-slate-500 text-[10px] font-mono">• ${followers} seguidores</span>
+                    </div>
+                    <div class="text-slate-300 text-xs md:text-sm leading-relaxed whitespace-pre-wrap break-words">${formattedText}</div>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
 
 function RenderMarketSkeleton() {
     return `
@@ -1818,23 +1453,30 @@ function UpdateMarketDynamic() {
     grid.innerHTML = filtered.map(token => {
         const progress = Math.min(100, ((token.solPool - VIRTUAL_USD_RESERVE) / BONDING_CURVE_LIMIT) * 100);
         const isComplete = progress >= 100;
+        const currentPrice = getPrice(token.solPool, token.tokenPool);
+        const mcap = currentPrice * token.initialSupply;
+        const isCex = token.milestones?.mCEX;
+
         const imgHTML = token.image && token.image.startsWith('data:image') || (token.image && token.image.startsWith('http')) 
           ? `<img src="${token.image}" class="w-10 h-10 md:w-12 md:h-12 rounded-lg object-cover border border-slate-700 shrink-0" onerror="this.outerHTML='<div class=\\'w-10 h-10 md:w-12 md:h-12 bg-slate-800 rounded-lg flex items-center justify-center border border-slate-700\\'>🪙</div>'"/>` 
           : `<div class="w-10 h-10 md:w-12 md:h-12 bg-slate-800 rounded-lg flex items-center justify-center border border-slate-700 text-xl md:text-2xl shrink-0">🪙</div>`;
 
         return `
         <div onclick="selectToken('${token.id}');" class="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-4 md:p-5 cursor-pointer transition-all hover:-translate-y-1 relative overflow-hidden group shadow-lg flex flex-col justify-between min-h-[140px] md:min-h-[170px]">
-            <div class="absolute bottom-0 left-0 h-1.5 bg-slate-950 w-full"><div class="h-full ${isComplete ? 'bg-purple-500' : 'bg-gradient-to-r from-emerald-600 to-emerald-400'} transition-all" style="width: ${progress}%"></div></div>
+            <div class="absolute bottom-0 left-0 h-1.5 bg-slate-950 w-full"><div class="h-full ${isCex ? 'bg-yellow-400' : isComplete ? 'bg-purple-500' : 'bg-gradient-to-r from-emerald-600 to-emerald-400'} transition-all" style="width: ${progress}%"></div></div>
             
             <div class="flex justify-between items-start mb-3 md:mb-4 z-10 gap-2 md:gap-3">
-                ${imgHTML}
+                <div class="relative">
+                    ${imgHTML}
+                    ${isCex ? `<div class="absolute -top-2 -right-2 bg-yellow-400 text-black text-[8px] font-black px-1.5 py-0.5 rounded shadow-lg border border-yellow-600">CEX</div>` : ''}
+                </div>
                 <div class="flex-1 min-w-0 pr-1 md:pr-2">
                     <h3 class="font-black text-white text-sm md:text-base truncate leading-tight mb-1">${token.name}</h3>
                     <span class="text-[9px] md:text-[10px] font-mono bg-slate-950 text-slate-400 px-1.5 py-0.5 rounded border border-slate-800 font-bold truncate block w-fit max-w-full">$${token.ticker}</span>
                 </div>
                 <div class="text-right shrink-0">
-                    <div class="text-[10px] md:text-sm font-mono font-bold ${isComplete ? 'text-purple-400 animate-pulse' : 'text-emerald-400'}">$${getPrice(token.solPool, token.tokenPool).toFixed(8)}</div>
-                    <div class="text-[8px] md:text-[10px] text-slate-500 font-bold uppercase mt-1">Vol: ${formatUSD(token.solPool - VIRTUAL_USD_RESERVE)}</div>
+                    <div class="text-[10px] md:text-sm font-mono font-bold ${isCex ? 'text-yellow-400 animate-pulse' : isComplete ? 'text-purple-400 animate-pulse' : 'text-emerald-400'}">$${currentPrice.toFixed(8)}</div>
+                    <div class="text-[8px] md:text-[10px] text-slate-500 font-bold uppercase mt-1">MCap: ${formatUSD(mcap)}</div>
                 </div>
             </div>
             <div class="h-12 md:h-16 w-full opacity-70 mt-auto">${generateChartSVG(token, 300, 64, true)}</div>
@@ -1862,7 +1504,10 @@ function RenderTokenDetailSkeleton() {
             <div class="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-4 md:p-6 flex flex-col shadow-xl overflow-y-auto min-h-[400px] shrink-0 lg:shrink">
                 <div class="flex justify-between items-start mb-4 md:mb-6 flex-wrap gap-3 shrink-0">
                     <div class="flex gap-3 items-center w-full sm:w-auto">
-                        ${imgHTML}
+                        <div class="relative">
+                            ${imgHTML}
+                            <div id="tok-cex-badge" class="absolute -top-3 -right-3 bg-yellow-400 text-black text-[9px] font-black px-2 py-1 rounded shadow-lg border border-yellow-600 hidden animate-bounce">CEX LISTED</div>
+                        </div>
                         <div class="flex-1 min-w-0 pr-2">
                             <h1 class="text-xl sm:text-2xl md:text-4xl font-black text-white tracking-tight mb-1 truncate">${token.name} <span class="text-emerald-400 text-sm md:text-xl bg-emerald-500/10 px-2 py-0.5 rounded-xl ml-1 font-mono border border-emerald-500/20">$${token.ticker}</span></h1>
                             <div class="flex flex-wrap items-center gap-2 text-[9px] md:text-sm font-bold text-slate-400">
@@ -1956,6 +1601,7 @@ function UpdateTokenDetailDynamic() {
     const currentPrice = getPrice(token.solPool, token.tokenPool);
     const mcap = currentPrice * token.initialSupply; 
     const balTokens = me.portfolio[token.id] || 0;
+    const isCex = token.milestones?.mCEX;
     
     const numAmt = parseFloat(document.getElementById('t-amount')?.value || STATE.tradeAmount) || 0;
     let estimated = 0;
@@ -1965,8 +1611,9 @@ function UpdateTokenDetailDynamic() {
     const progress = Math.min(100, ((token.solPool - VIRTUAL_USD_RESERVE) / BONDING_CURVE_LIMIT) * 100);
     const isComplete = progress >= 100;
 
+    const dCex = document.getElementById('tok-cex-badge'); if(dCex) { if(isCex) dCex.classList.remove('hidden'); else dCex.classList.add('hidden'); }
     const dRep = document.getElementById('tok-dev-rep'); if(dRep) { dRep.innerText = STATE.players[token.creatorId]?.reputation || 1; dRep.className = (STATE.players[token.creatorId]?.reputation || 1) > 70 ? 'text-emerald-400' : 'text-slate-300'; }
-    const prEl = document.getElementById('tok-price'); if(prEl) { prEl.innerHTML = '$' + currentPrice.toFixed(8); prEl.className = `text-base sm:text-xl md:text-3xl font-mono font-black ${isComplete ? 'text-purple-400' : 'text-emerald-400'}`; }
+    const prEl = document.getElementById('tok-price'); if(prEl) { prEl.innerHTML = '$' + currentPrice.toFixed(8); prEl.className = `text-base sm:text-xl md:text-3xl font-mono font-black ${isCex ? 'text-yellow-400' : isComplete ? 'text-purple-400' : 'text-emerald-400'}`; }
     const mcEl = document.getElementById('tok-mcap'); if(mcEl) mcEl.innerText = formatUSD(mcap);
     
     const pnlDiv = document.getElementById('tok-pnl-container');
@@ -1985,9 +1632,9 @@ function UpdateTokenDetailDynamic() {
         }
     }
 
-    const pLbl = document.getElementById('tok-prog-lbl'); if(pLbl) pLbl.className = isComplete ? 'text-purple-400 animate-pulse' : '';
+    const pLbl = document.getElementById('tok-prog-lbl'); if(pLbl) pLbl.className = isCex ? 'text-yellow-400 animate-pulse' : isComplete ? 'text-purple-400 animate-pulse' : '';
     const pTxt = document.getElementById('tok-prog-text'); if(pTxt) pTxt.innerText = progress.toFixed(1) + '%';
-    const pBar = document.getElementById('tok-prog-bar'); if(pBar) { pBar.style.width = progress + '%'; pBar.className = `h-full transition-all duration-500 ${isComplete ? 'bg-gradient-to-r from-purple-600 to-purple-400' : 'bg-gradient-to-r from-emerald-600 to-emerald-400'}`; }
+    const pBar = document.getElementById('tok-prog-bar'); if(pBar) { pBar.style.width = progress + '%'; pBar.className = `h-full transition-all duration-500 ${isCex ? 'bg-gradient-to-r from-yellow-500 to-yellow-300' : isComplete ? 'bg-gradient-to-r from-purple-600 to-purple-400' : 'bg-gradient-to-r from-emerald-600 to-emerald-400'}`; }
     
     const chEl = document.getElementById('tok-chart'); if(chEl) chEl.innerHTML = generateChartSVG(token, 800, 400, false);
     
@@ -2059,6 +1706,7 @@ function RenderLeaderboardSkeleton() {
                 <div class="w-px bg-slate-800 my-1 hidden sm:block"></div>
                 <select id="sel-lb-sort" onchange="STATE.lbSort=this.value; requestUIRender();" class="flex-1 bg-slate-950 border-none rounded-lg px-2 py-2 text-[10px] md:text-xs font-bold text-slate-300 focus:ring-0 cursor-pointer outline-none">
                     <option value="balance" ${STATE.lbSort==='balance'?'selected':''}>💰 Dinero</option>
+                    <option value="followers" ${STATE.lbSort==='followers'?'selected':''}>📢 Seguidores</option>
                     <option value="reputation" ${STATE.lbSort==='reputation'?'selected':''}>🛡️ Reputación</option>
                 </select>
                 ${STATE.roomConfig.isHost ? `<button onclick="dispatchAction('ACTION_ADD_BOT')" class="w-full sm:w-auto bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 text-[10px] px-3 py-2 rounded-lg font-black transition-colors">+ Bot</button>` : ''}
@@ -2077,6 +1725,7 @@ function UpdateLeaderboardDynamic() {
     else if(STATE.lbFilter === 'humans') filtered = filtered.filter(p => !p.isBot);
 
     if(STATE.lbSort === 'balance') filtered.sort((a,b) => (b.solBalance+(b.solStaked||0)) - (a.solBalance+(a.solStaked||0)));
+    else if(STATE.lbSort === 'followers') filtered.sort((a,b) => (b.followers||0) - (a.followers||0));
     else if(STATE.lbSort === 'reputation') filtered.sort((a,b) => b.reputation - a.reputation);
 
     filtered = filtered.slice(0, 100);
@@ -2085,7 +1734,7 @@ function UpdateLeaderboardDynamic() {
         <div class="overflow-x-auto">
             <table class="w-full text-left hidden md:table min-w-[700px]">
                 <thead class="bg-slate-950 text-xs text-slate-500 uppercase tracking-widest border-b border-slate-800 font-black">
-                    <tr><th class="px-4 py-4">#</th><th class="px-4 py-4">Usuario</th><th class="px-4 py-4 text-center">Tipo</th><th class="px-4 py-4 text-center">Rep</th><th class="px-4 py-4 text-center">Inventario</th><th class="px-4 py-4 text-right">Net Worth</th><th class="px-4 py-4 text-center">Acción</th></tr>
+                    <tr><th class="px-4 py-4">#</th><th class="px-4 py-4">Usuario</th><th class="px-4 py-4 text-center">Tipo</th><th class="px-4 py-4 text-center">Fans</th><th class="px-4 py-4 text-center">Rep</th><th class="px-4 py-4 text-center">Inventario</th><th class="px-4 py-4 text-right">Net Worth</th><th class="px-4 py-4 text-center">Acción</th></tr>
                 </thead>
                 <tbody class="divide-y divide-slate-800/50 text-sm">
                     ${filtered.map((p, i) => {
@@ -2102,6 +1751,7 @@ function UpdateLeaderboardDynamic() {
                             </div>
                         </td>
                         <td class="px-4 py-4 text-center">${p.isBot ? `<span class="text-[9px] font-black tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-1 rounded-md uppercase">BOT: ${p.strategy}</span>` : `<span class="text-[9px] font-black tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-1 rounded-md uppercase">HUMANO</span>`}</td>
+                        <td class="px-4 py-4 text-center font-bold text-blue-400 text-xs">${(p.followers||0).toLocaleString()}</td>
                         <td class="px-4 py-4 text-center"><div class="flex items-center justify-center gap-1 font-black text-sm" title="Reputación"><span class="text-slate-600">${Icons.Shield}</span> <span class="${p.reputation > 70 ? 'text-emerald-400' : p.reputation < 30 ? 'text-red-400' : 'text-yellow-400'}">${p.reputation}</span></div></td>
                         <td class="px-4 py-4 text-center text-lg tracking-widest">${p.luxuries?.slice(0,3).join('') || '-'}</td>
                         <td class="px-4 py-4 font-mono font-bold text-emerald-400 text-right text-sm">${formatUSD(p.solBalance + (p.solStaked||0))}</td>
@@ -2130,8 +1780,8 @@ function UpdateLeaderboardDynamic() {
                 </div>
                 <div class="flex justify-between items-center text-[10px] mt-1">
                     <div class="flex items-center gap-2 cursor-pointer" onclick="STATE.viewingProfileId='${p.id}'; STATE.giftTargetId=null; renderModal();">
-                        ${p.isBot ? `<span class="text-[8px] font-black text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded uppercase tracking-wider">BOT</span>` : `<span class="text-[8px] font-black text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded uppercase tracking-wider">HUMANO</span>`}
-                        <span class="flex items-center gap-1 font-bold text-slate-300"><span class="text-slate-600">${Icons.Shield}</span> <span class="${p.reputation > 70 ? 'text-emerald-400' : p.reputation < 30 ? 'text-red-400' : 'text-yellow-400'}">${p.reputation}</span></span>
+                        <span class="font-bold text-blue-400"><span class="text-slate-600">${Icons.Users}</span> ${(p.followers||0).toLocaleString()}</span>
+                        <span class="flex items-center gap-1 font-bold text-slate-300 ml-2"><span class="text-slate-600">${Icons.Shield}</span> <span class="${p.reputation > 70 ? 'text-emerald-400' : p.reputation < 30 ? 'text-red-400' : 'text-yellow-400'}">${p.reputation}</span></span>
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="text-base tracking-widest">${p.luxuries?.slice(0,2).join('') || ''}</span>
@@ -2223,7 +1873,7 @@ function RenderShop() {
     const me = STATE.players[STATE.myProfile.id];
     let html = `<div class="max-w-6xl mx-auto animate-fade-in pb-10">
         <h2 class="text-2xl md:text-3xl font-black text-white mb-1 md:mb-2 tracking-tight">Tienda Degen</h2>
-        <p class="text-slate-500 text-xs md:text-sm mb-6 md:mb-8">Sube tu reputación y muestra tus lujos en el Mundo 2D.</p>`;
+        <p class="text-slate-500 text-xs md:text-sm mb-6 md:mb-8">Sube tu reputación y gana influencia (seguidores) comprando lujos.</p>`;
         
     for(const cat in SHOP_CATEGORIES) {
         html += `<h3 class="text-sm md:text-lg font-black text-slate-400 uppercase tracking-widest mb-3 md:mb-4 mt-6 md:mt-8">${cat}</h3>
@@ -2234,7 +1884,10 @@ function RenderShop() {
                 <div class="text-4xl md:text-6xl mb-3 md:mb-5 group-hover:scale-110 transition-transform">${item.icon}</div>
                 <h3 class="font-black text-white text-xs md:text-lg mb-1 truncate">${item.name}</h3>
                 <div class="text-[10px] md:text-sm font-mono font-bold text-emerald-400 mb-3 md:mb-4 bg-emerald-500/10 w-fit mx-auto px-2 py-0.5 md:py-1 rounded-lg border border-emerald-500/20">${formatUSD(item.price)}</div>
-                <div class="text-[8px] md:text-xs font-bold text-slate-400 mb-4 md:mb-6 flex justify-center items-center gap-1 md:gap-1.5 bg-slate-950 py-1 md:py-1.5 rounded-lg shadow-inner"><span class="text-slate-600">${Icons.Shield}</span> +${item.rep} Rep</div>
+                <div class="text-[8px] md:text-xs font-bold text-slate-400 mb-4 md:mb-6 flex flex-col items-center gap-1 bg-slate-950 py-1 md:py-1.5 rounded-lg shadow-inner">
+                    <span class="flex items-center gap-1"><span class="text-slate-600">${Icons.Shield}</span> +${item.rep} Rep</span>
+                    <span class="flex items-center gap-1 text-blue-400"><span class="text-slate-600">${Icons.Users}</span> +${item.rep*10} Fans</span>
+                </div>
                 <button onclick="dispatchAction('ACTION_BUY_LUXURY', {itemId: '${item.id}'}); switchTab('shop');" class="mt-auto w-full py-2.5 md:py-3.5 rounded-xl font-black text-[10px] md:text-sm uppercase tracking-wider transition-all ${me.solBalance < item.price ? 'opacity-50 cursor-not-allowed bg-slate-950 text-slate-600 border border-slate-800' : 'bg-white text-slate-950 hover:bg-slate-200 hover:shadow-lg'}">Comprar</button>
             </div>`;
         });
@@ -2250,7 +1903,7 @@ function RenderLaunch() {
     return `
     <div class="max-w-lg mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-8 shadow-2xl animate-fade-in mt-4 md:mt-10">
         <h2 class="text-xl md:text-2xl font-black text-white mb-2 flex items-center gap-3">${Icons.Rocket} Desplegar Token</h2>
-        <p class="text-[10px] md:text-xs text-slate-500 mb-6 md:mb-8 font-bold uppercase tracking-wider leading-relaxed">El token inicia con curva Pump.fun. Ganas reputación por volumen.</p>
+        <p class="text-[10px] md:text-xs text-slate-500 mb-6 md:mb-8 font-bold uppercase tracking-wider leading-relaxed">El token inicia con curva Pump.fun. Ganas reputación por volumen y CEX listings.</p>
         <form id="launch-form" onsubmit="event.preventDefault(); const n=document.getElementById('l-name').value; const t=document.getElementById('l-ticker').value; const i=document.getElementById('l-image')?.value || STATE.launchData.image; const d=parseFloat(document.getElementById('l-devbuy').value)||0; if(n&&t){dispatchAction('ACTION_LAUNCH', {name:n, ticker:t, image:i, devBuy:d}); STATE.launchData.image=''; switchTab('market');}" class="space-y-4 md:space-y-5">
             <div>
                 <label class="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 md:mb-2 block">Nombre del Proyecto</label>
@@ -2296,7 +1949,7 @@ function RenderCharity() {
     <div class="max-w-4xl mx-auto space-y-4 md:space-y-6 animate-fade-in text-center pt-6 md:pt-10 px-4">
         <div class="text-5xl md:text-6xl mb-2 md:mb-4 animate-pulse">💖</div>
         <h1 class="text-3xl md:text-4xl font-black text-white">Beneficencia</h1>
-        <p class="text-slate-400 text-xs md:text-sm max-w-lg mx-auto">Regala tus ganancias en USD a humanos reales o quémalo por karma global.</p>
+        <p class="text-slate-400 text-xs md:text-sm max-w-lg mx-auto">Regala tus ganancias en USD a humanos reales o quémalo por karma y seguidores.</p>
         <div class="bg-slate-900 border border-slate-800 p-5 md:p-8 rounded-3xl max-w-sm mx-auto shadow-xl mt-6 md:mt-8">
             <input id="charity-amount" type="number" placeholder="Monto en USD" value="${STATE.airdropAmount}" oninput="STATE.airdropAmount = this.value" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 md:py-4 text-emerald-400 font-mono text-xl md:text-2xl text-center mb-4 md:mb-6 focus:border-emerald-500 outline-none transition-colors"/>
             <div class="flex flex-col gap-2 md:gap-3">
@@ -2350,8 +2003,9 @@ function renderModal() {
                 ${p.name} ${isMe ? '<span class="text-[10px] md:text-xs bg-emerald-500/10 text-emerald-400 px-1.5 md:px-2 py-0.5 rounded uppercase tracking-wider">Tú</span>' : ''}
             </h2>
             <div class="text-[10px] md:text-xs text-slate-500 font-mono font-bold uppercase tracking-widest mt-1.5 md:mt-2 flex flex-col gap-1 items-center">
-                <span>${p.isBot ? (p.id === 'SYSTEM_MM' ? 'Market Maker de la Red' : `Bot IA: ${p.strategy}`) : 'Jugador Humano'}</span>
-                <span class="${r.color} bg-slate-950 px-2 md:px-3 py-1 rounded-full border border-slate-800 shadow-inner text-[9px] md:text-xs">${r.emoji} Rango: ${r.name}</span>
+                <span class="text-blue-400 flex items-center gap-1"><span class="text-slate-600">${Icons.Megaphone}</span> ${(p.followers||0).toLocaleString()} Seguidores</span>
+                <span>${p.isBot ? (p.id === 'SYSTEM_MM' ? 'Market Maker Central' : `Bot IA: ${p.strategy}`) : 'Jugador Humano'}</span>
+                <span class="${r.color} bg-slate-950 px-2 md:px-3 py-1 rounded-full border border-slate-800 shadow-inner text-[9px] md:text-xs mt-1">${r.emoji} Rango: ${r.name}</span>
             </div>
         </div>
         
@@ -2446,11 +2100,10 @@ function generateChartSVG(token, w, h, simplified) {
 
 // INIT (Analizar parámetros y empezar)
 window.onload = () => {
-    // Detectar si la página fue recargada (F5 / Refresh / Pull-to-refresh)
     const navEntries = performance.getEntriesByType("navigation");
     if (navEntries.length > 0 && navEntries[0].type === "reload") {
         window.location.href = 'index.html';
-        return; // Detener ejecución para evitar bugs de reconexión
+        return; 
     }
 
     const profileStr = localStorage.getItem('degen_profile');
@@ -2470,19 +2123,13 @@ window.onload = () => {
     const isHost = urlParams.get('host') === 'true';
     const isOffline = urlParams.get('offline') === 'true';
     
-    // NUEVOS PARÁMETROS: Nombre y Mapa
-    const roomName = urlParams.get('name') || 'Sala Degen';
-    const hasMap = urlParams.get('map') !== 'false';
-
     if(!code && !isOffline) { window.location.href = 'index.html'; return; }
 
     if(isOffline) {
-        STATE.roomConfig = {...STATE.roomConfig, code: 'LOCAL', isHost: true, isOffline: true, name: roomName, hasMap: hasMap};
-        if(!hasMap) STATE.activeTab = 'market';
+        STATE.roomConfig = {...STATE.roomConfig, code: 'LOCAL', isHost: true, isOffline: true };
         initNetwork('LOCAL', 'offline', STATE.roomConfig.botCount);
     } else if(isHost) {
-        STATE.roomConfig = {...STATE.roomConfig, code: code, isHost: true, isOffline: false, name: roomName, hasMap: hasMap};
-        if(!hasMap) STATE.activeTab = 'market';
+        STATE.roomConfig = {...STATE.roomConfig, code: code, isHost: true, isOffline: false };
         initNetwork(code, 'host', STATE.roomConfig.botCount);
     } else {
         STATE.roomConfig = {...STATE.roomConfig, code: code, isHost: false, isOffline: false};
