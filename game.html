@@ -608,7 +608,7 @@ function processMessageAsHost(data) {
         broadcastState();
     }
     
-    if (type === 'ACTION_TRADE') handleTradeHost(payload.tokenId, payload.isBuy, payload.amount, senderId);
+    if (type === 'ACTION_TRADE') { handleTradeHost(payload.tokenId, payload.isBuy, payload.amount, senderId); broadcastState(); }
     if (type === 'ACTION_LAUNCH') handleLaunchHost(payload.name, payload.ticker, payload.image, payload.devBuy, senderId);
     if (type === 'ACTION_BURN') handleBurnHost(payload.tokenId, payload.amount, senderId);
     if (type === 'ACTION_CHAT') handleChatHost(payload.msg, senderId, false);
@@ -670,6 +670,7 @@ function processMessageAsClient(data) {
     const { type, payload, senderId, time, target } = data;
     
     if (type === 'ROOM_CONFIG' && target === STATE.myProfile.id) {
+        if (window.handshakeInterval) clearInterval(window.handshakeInterval); // PERMITIR UNIRSE CUANDO YA INICIÓ
         STATE.roomConfig.name = payload.name;
         STATE.roomConfig.hostPeerId = payload.hostPeerId; 
         requestUIRender(true);
@@ -687,6 +688,7 @@ function processMessageAsClient(data) {
     }
     
     if (type === 'STATE_SYNC') {
+        if (window.handshakeInterval) clearInterval(window.handshakeInterval); // PERMITIR UNIRSE CUANDO YA INICIÓ
         if (STATE.lastSyncTime && time && time < STATE.lastSyncTime) return; 
         if (time) STATE.lastSyncTime = time;
 
@@ -709,54 +711,36 @@ function processMessageAsClient(data) {
     if (type === 'EVENT_ALERT') { if (STATE.trackedIds.has(senderId)) addToast(payload.msg, payload.icon); }
 }
 
-let pendingBroadcast = null;
-let lastBroadcastTime = 0;
 let lastMqttBroadcast = 0;
 
 function broadcastState() {
     if (STATE.roomConfig.isHost) {
         requestUIRender(); // UI local del host se actualiza al instante sin delay
         
-        const now = Date.now();
-        // THROTTLING: Máximo 3 envíos por segundo por P2P para evitar Buffer Bloat (Saturación de red)
-        if (now - lastBroadcastTime < 300) {
-            if (!pendingBroadcast) {
-                pendingBroadcast = setTimeout(() => {
-                    pendingBroadcast = null;
-                    executeNetworkBroadcast();
-                }, 300);
-            }
-            return;
-        }
-        lastBroadcastTime = now;
-        executeNetworkBroadcast();
-    }
-}
-
-function executeNetworkBroadcast() {
-    const syncTime = Date.now();
-    
-    // GARBAGE COLLECTOR: Evitar que el historial de gráficas crezca infinitamente y mate el Ping
-    Object.values(STATE.tokens).forEach(t => {
-        if(t.history && t.history.length > 100) t.history = t.history.slice(-100);
-    });
-
-    const syncPayload = { players: STATE.players, tokens: STATE.tokens, chat: STATE.chat, posts: STATE.posts, gameState: STATE.gameState };
-
-    // P2P Ultra Rápido (Principal) - Data fluida y ligera
-    if (window.clientConns) {
-        const msgObjFull = { type: 'STATE_SYNC', time: syncTime, payload: syncPayload };
-        Object.values(window.clientConns).forEach(c => {
-            if(c.open) c.send(msgObjFull);
+        const syncTime = Date.now();
+        
+        // GARBAGE COLLECTOR: Mantiene la RAM limpia limitando el historial (Crucial para ping 0)
+        Object.values(STATE.tokens).forEach(t => {
+            if(t.history && t.history.length > 100) t.history = t.history.slice(-100);
         });
-    }
 
-    // MQTT Fallback (Ligero) - Limitado a 1 vez cada 2 segundos para no banear el broker público
-    if (!STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
-        if (syncTime - lastMqttBroadcast > 2000) {
-            lastMqttBroadcast = syncTime;
-            const msg = { type: 'STATE_SYNC', time: syncTime, payload: syncPayload };
-            mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify(msg));
+        const syncPayload = { players: STATE.players, tokens: STATE.tokens, chat: STATE.chat, posts: STATE.posts, gameState: STATE.gameState };
+
+        // P2P ULTRA RÁPIDO (0ms Latencia - Sin Throttling)
+        if (window.clientConns) {
+            const msgObjFull = { type: 'STATE_SYNC', time: syncTime, payload: syncPayload };
+            Object.values(window.clientConns).forEach(c => {
+                if(c.open) c.send(msgObjFull);
+            });
+        }
+
+        // MQTT Fallback (Ligero) - Limitado a 1 vez por segundo para no banear el broker público
+        if (!STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
+            if (syncTime - lastMqttBroadcast > 1000) {
+                lastMqttBroadcast = syncTime;
+                const msg = { type: 'STATE_SYNC', time: syncTime, payload: syncPayload };
+                mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify(msg));
+            }
         }
     }
 }
@@ -1062,7 +1046,7 @@ function startBotBrain() {
 // CLIENT ACTIONS DISPATCHER
 function dispatchAction(type, payload) {
     if (STATE.roomConfig.isHost) {
-        if(type==='ACTION_TRADE') handleTradeHost(payload.tokenId, payload.isBuy, payload.amount, STATE.myProfile.id);
+        if(type==='ACTION_TRADE') { handleTradeHost(payload.tokenId, payload.isBuy, payload.amount, STATE.myProfile.id); broadcastState(); }
         if(type==='ACTION_LAUNCH') handleLaunchHost(payload.name, payload.ticker, payload.image, payload.devBuy, STATE.myProfile.id);
         if(type==='ACTION_BURN') handleBurnHost(payload.tokenId, payload.amount, STATE.myProfile.id);
         if(type==='ACTION_CHAT') handleChatHost(payload.msg, STATE.myProfile.id, false);
