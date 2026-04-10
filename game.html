@@ -60,22 +60,25 @@ const Icons = {
     Parachute: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M12 12l4-4"/><path d="M12 12l-4-4"/><path d="M2 12h20"/><path d="M12 22a10 10 0 0 1-10-10h20a10 10 0 0 1-10 10z"/></svg>`,
     Dice: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><circle cx="15.5" cy="8.5" r="1.5"/><circle cx="15.5" cy="15.5" r="1.5"/><circle cx="8.5" cy="15.5" r="1.5"/><circle cx="12" cy="12" r="1.5"/></svg>`,
     Bank: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><path d="M12 15v2"/></svg>`,
-    Megaphone: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>`
+    Megaphone: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>`,
+    Flag: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>`,
+    Building: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg>`,
+    CheckBadge: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`
 };
 
-const BOT_STRATEGIES = ['Scalper', 'Hodler', 'Degen', 'Whale', 'Sniper', 'PaperHands', 'RugPuller']; 
+const BOT_STRATEGIES = ['Scalper', 'Hodler', 'Degen', 'Whale', 'Sniper', 'PaperHands', 'RugPuller', 'CopyTrader', 'VolumeSniper']; 
 const SHOP_CATEGORIES = {
+    'Vehículos': [
+        { id: 'civic', name: 'Honda Civic', price: 10, rep: 3, icon: '🚗', isCar: true },
+        { id: 'lambo', name: 'Lambo de Segunda', price: 50, rep: 50, icon: '🏎️', isCar: true },
+        { id: 'f1', name: 'Formula 1', price: 300, rep: 200, icon: '🚙', isCar: true },
+        { id: 'jet', name: 'Jet Privado', price: 1500, rep: 1000, icon: '✈️' }
+    ],
     'Relojes y Joyas': [
         { id: 'casio', name: 'Casio Vintage', price: 0.5, rep: 1, icon: '⌚' },
         { id: 'rolex', name: 'Rolex Falso', price: 5, rep: 5, icon: '⏱️' },
         { id: 'chain', name: 'Cadena de Oro', price: 15, rep: 10, icon: '⛓️' },
         { id: 'diamond', name: 'Diamante VVS', price: 100, rep: 50, icon: '💎' }
-    ],
-    'Vehículos': [
-        { id: 'bike', name: 'Bici Usada', price: 2, rep: 2, icon: '🚲' },
-        { id: 'lambo', name: 'Lambo de Segunda', price: 50, rep: 50, icon: '🏎️' },
-        { id: 'yacht', name: 'Yate Pequeño', price: 300, rep: 200, icon: '🛥️' },
-        { id: 'jet', name: 'Jet Privado', price: 1500, rep: 1000, icon: '✈️' }
     ],
     'Inmuebles': [
         { id: 'basement', name: 'Sótano (Rentado)', price: 10, rep: 5, icon: '🕳️' },
@@ -84,6 +87,7 @@ const SHOP_CATEGORIES = {
         { id: 'mars', name: 'Terreno en Marte', price: 25000, rep: 15000, icon: '🪐' }
     ],
     'Excentricidades': [
+        { id: 'verified', name: 'Check Azul (Verificado)', price: 25, rep: 100, icon: '✅', isVerified: true },
         { id: 'monkey', name: 'Mono JPG', price: 20, rep: 15, icon: '🖼️' },
         { id: 'esports', name: 'Equipo de eSports', price: 800, rep: 600, icon: '🎮' },
         { id: 'country', name: 'País Pequeño', price: 100000, rep: 50000, icon: '🏳️' }
@@ -105,6 +109,7 @@ const VIRTUAL_USD_RESERVE = 20;
 const BONDING_CURVE_LIMIT = 85; 
 const CEX_LISTING_MCAP = 10000000; 
 const getPrice = (solPool, tokenPool) => solPool / tokenPool;
+// Se agregan fees (2% por transaccion)
 const calcTokensOut = (solIn, solPool, tokenPool) => tokenPool - ((solPool * tokenPool) / (solPool + solIn * 0.95)); 
 const calcSolOut = (tokensIn, solPool, tokenPool) => solPool - ((solPool * tokenPool) / (tokenPool + tokensIn * 0.95)); 
 
@@ -114,13 +119,14 @@ const calcSolOut = (tokensIn, solPool, tokenPool) => solPool - ((solPool * token
 let STATE = {
     route: 'lobby', 
     myProfile: null,
-    // Se aumentó el límite de actores a 10,050 para permitir 10,000 bots + 50 humanos
-    roomConfig: { code: '', name: 'Sala Degen', maxPlayers: 10050, isHost: false, isOffline: false, botsEnabled: true, botCount: 200, botPostsEnabled: true },
-    players: {}, // En el host: TODOS los bots. En el cliente: Solo Humanos + Top 70 Bots
-    totalPlayerCount: 0, // Para mantener el contador visual exacto en los clientes
+    // Reducido a 50 bots por defecto, límite igual de alto.
+    roomConfig: { code: '', name: 'Sala Degen', maxPlayers: 10050, isHost: false, isOffline: false, botsEnabled: true, botCount: 50, botPostsEnabled: true },
+    players: {}, 
+    totalPlayerCount: 0, 
     tokens: {},
     chat: [],
     posts: [],
+    races: {}, // Carreras activas
     gameState: 'waiting', 
     ping: 0,
     toasts: [],
@@ -128,6 +134,7 @@ let STATE = {
     selectedTokenId: null,
     searchQuery: '',
     marketFilter: 'all',
+    exchangeFilter: 'all',
     chatTab: 'global',
     lbFilter: 'all', 
     lbSort: 'balance', 
@@ -205,7 +212,7 @@ window.handleImageUpload = function(event) {
 
 function saveGame() {
     if(!STATE.roomConfig.isHost) return addToast("Solo el Host puede guardar", "❌");
-    const saveData = { players: STATE.players, tokens: STATE.tokens, roomConfig: STATE.roomConfig, chat: STATE.chat, posts: STATE.posts, gameState: STATE.gameState };
+    const saveData = { players: STATE.players, tokens: STATE.tokens, roomConfig: STATE.roomConfig, chat: STATE.chat, posts: STATE.posts, gameState: STATE.gameState, races: STATE.races };
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(saveData));
     const dlAnchorElem = document.createElement('a'); dlAnchorElem.setAttribute("href", dataStr);
     dlAnchorElem.setAttribute("download", `DegenTerminal_Save_${STATE.roomConfig.code}.json`);
@@ -218,6 +225,7 @@ function loadGameFromStorage() {
         if(loaded && loaded.players && loaded.roomConfig) {
             STATE.players = loaded.players; STATE.tokens = loaded.tokens || {};
             STATE.roomConfig = loaded.roomConfig; STATE.chat = loaded.chat || []; STATE.posts = loaded.posts || []; STATE.gameState = loaded.gameState || 'waiting';
+            STATE.races = loaded.races || {};
             STATE.totalPlayerCount = Object.keys(STATE.players).length;
             
             const hostProfile = Object.values(STATE.players).find(p => !p.isBot) || STATE.players[Object.keys(STATE.players)[0]];
@@ -325,10 +333,9 @@ window.adjustBots = function(targetCount) {
     if (!STATE.roomConfig.isHost) return;
     if (!STATE.roomConfig.botsEnabled) targetCount = 0;
     
-    // Mantener la configuración sincronizada con la cantidad actual (para el autoguardado)
     STATE.roomConfig.botCount = targetCount; 
     
-    const currentBotKeys = Object.keys(STATE.players).filter(k => STATE.players[k].isBot && k !== 'SYSTEM_MM');
+    const currentBotKeys = Object.keys(STATE.players).filter(k => STATE.players[k].isBot && !k.startsWith('SYSTEM_'));
     if (currentBotKeys.length < targetCount) {
         const toAdd = targetCount - currentBotKeys.length;
         const startIndex = currentBotKeys.length;
@@ -337,15 +344,20 @@ window.adjustBots = function(targetCount) {
             const strategy = BOT_STRATEGIES[Math.floor(Math.random() * BOT_STRATEGIES.length)];
             let startBal = 10;
             let botFollowers = 0;
-            if (strategy === 'Whale') { startBal = 200; botFollowers = 5000 + Math.floor(Math.random() * 20000); }
-            else if (strategy === 'Degen' || strategy === 'Sniper' || strategy === 'RugPuller') { startBal = 40; botFollowers = 100 + Math.floor(Math.random() * 1000); }
+            
+            // Posibilidad de bots millonarios
+            if(Math.random() < 0.05) { startBal = 1000000 + Math.random() * 5000000; botFollowers = 50000; }
+            else if (strategy === 'Whale') { startBal = 200; botFollowers = 5000 + Math.floor(Math.random() * 20000); }
+            else if (strategy === 'Degen' || strategy === 'Sniper' || strategy === 'RugPuller' || strategy === 'VolumeSniper') { startBal = 40; botFollowers = 100 + Math.floor(Math.random() * 1000); }
+            else if (strategy === 'CopyTrader') { startBal = 80; botFollowers = 50; }
             else if (strategy === 'PaperHands') { startBal = 15; botFollowers = Math.floor(Math.random() * 50); }
             
             const id = `bot_${Date.now()}_${Math.random().toString(36).substr(2,5)}`;
             STATE.players[id] = { 
                 id: id, name: `${strategy}_Bot${startIndex + i}`, avatar: '🤖', 
                 solBalance: startBal, portfolio: {}, isBot: true, strategy: strategy,
-                reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0, followers: botFollowers
+                reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0, followers: botFollowers,
+                carTuning: { speedLevel: 1, accelLevel: 1 }
             };
         }
     } else if (currentBotKeys.length > targetCount) {
@@ -363,7 +375,13 @@ const BROKER_URLS = [
 ];
 let currentBrokerIndex = 0;
 
-function initNetwork(roomId, mode, customBotCount = 20) {
+function setupSystemBots() {
+    if(!STATE.players['SYSTEM_MM']) STATE.players['SYSTEM_MM'] = { id: 'SYSTEM_MM', name: 'Exchange_MM', avatar: '🏦', isBot: true, isVerified: true, solBalance: 999999, portfolio: {}, reputation: 100, solStaked: 0, followers: 999999 };
+    if(!STATE.players['SYSTEM_CMC']) STATE.players['SYSTEM_CMC'] = { id: 'SYSTEM_CMC', name: 'CoinMarketCap', avatar: '📈', isBot: true, isVerified: true, solBalance: 999999, portfolio: {}, reputation: 100, solStaked: 0, followers: 500000 };
+    if(!STATE.players['SYSTEM_BINANCE']) STATE.players['SYSTEM_BINANCE'] = { id: 'SYSTEM_BINANCE', name: 'Binance', avatar: '🔶', isBot: true, isVerified: true, solBalance: 9999999, portfolio: {}, reputation: 100, solStaked: 0, followers: 2000000 };
+}
+
+function initNetwork(roomId, mode, customBotCount = 50) {
     if (peer && peer.destroy) { peer.destroy(); peer = null; }
     if(mqttClient && mode === 'offline') { mqttClient.end(); mqttClient = null; }
     STATE.netLogs = []; 
@@ -371,9 +389,9 @@ function initNetwork(roomId, mode, customBotCount = 20) {
     if (mode === 'offline') {
         tLog("Iniciando Entorno de Simulación Local.", "text-purple-400");
         if (!STATE.players[STATE.myProfile.id]) {
-            STATE.players[STATE.myProfile.id] = { ...STATE.myProfile, solBalance: 10, portfolio: {}, reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0, followers: 0 };
+            STATE.players[STATE.myProfile.id] = { ...STATE.myProfile, solBalance: 10, portfolio: {}, reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0, followers: 0, carTuning: { speedLevel: 1, accelLevel: 1 } };
         }
-        if(!STATE.players['SYSTEM_MM']) STATE.players['SYSTEM_MM'] = { id: 'SYSTEM_MM', name: 'Exchange_MM', avatar: '🏦', isBot: true, solBalance: 999999, portfolio: {}, reputation: 100, solStaked: 0, followers: 999999 };
+        setupSystemBots();
         window.adjustBots(customBotCount);
         addToast("Modo Offline Activado", "🔌");
         requestUIRender(true);
@@ -398,11 +416,9 @@ function initNetwork(roomId, mode, customBotCount = 20) {
                 addToast(`Sala Segura Creada/Reconectada: ${roomId}`, '🌐');
                 
                 if (!STATE.players[STATE.myProfile.id]) {
-                    STATE.players[STATE.myProfile.id] = { ...STATE.myProfile, solBalance: 10, portfolio: {}, reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0, followers: 0 };
+                    STATE.players[STATE.myProfile.id] = { ...STATE.myProfile, solBalance: 10, portfolio: {}, reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0, followers: 0, carTuning: { speedLevel: 1, accelLevel: 1 } };
                 }
-                if(!STATE.players['SYSTEM_MM']) {
-                    STATE.players['SYSTEM_MM'] = { id: 'SYSTEM_MM', name: 'Exchange_MM', avatar: '🏦', isBot: true, solBalance: 999999, portfolio: {}, reputation: 100, solStaked: 0, followers: 999999 };
-                }
+                setupSystemBots();
                 window.adjustBots(customBotCount);
                 requestUIRender(true);
                 startSystemEvents();
@@ -512,7 +528,7 @@ function startHostAutoSave() {
     
     autosaveInterval = setInterval(() => {
         if (STATE.gameState === 'playing') {
-            const saveData = { players: STATE.players, tokens: STATE.tokens, roomConfig: STATE.roomConfig, chat: STATE.chat, posts: STATE.posts, gameState: STATE.gameState };
+            const saveData = { players: STATE.players, tokens: STATE.tokens, roomConfig: STATE.roomConfig, chat: STATE.chat, posts: STATE.posts, gameState: STATE.gameState, races: STATE.races };
             const jsonStr = JSON.stringify(saveData);
             sessionStorage.setItem('degen_savegame', jsonStr);
             localStorage.setItem('degen_autosave', jsonStr); 
@@ -600,7 +616,7 @@ function processMessageAsHost(data) {
                 mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify({ type: 'JOIN_REJECT', target: payload.id, reason: 'Sala llena' }));
                 return;
             }
-            STATE.players[payload.id] = { ...payload, solBalance: 10, portfolio: {}, reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0, followers: 0 };
+            STATE.players[payload.id] = { ...payload, solBalance: 10, portfolio: {}, reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0, followers: 0, carTuning: { speedLevel: 1, accelLevel: 1 } };
             STATE.totalPlayerCount = Object.keys(STATE.players).length;
         }
         mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify({ type: 'ROOM_CONFIG', payload: STATE.roomConfig, target: payload.id }));
@@ -614,8 +630,16 @@ function processMessageAsHost(data) {
     if (type === 'ACTION_POST') handlePostHost(payload.text, senderId);
     if (type === 'ACTION_GIFT') handleGiftHost(payload.to, payload.asset, payload.amount, senderId);
     if (type === 'ACTION_BUY_LUXURY') handleBuyLuxuryHost(payload.itemId, senderId);
-    // Se actualizó para aceptar cantidades personalizadas enviadas por el Host
-    if (type === 'ACTION_ADD_BOT') { window.adjustBots(Object.keys(STATE.players).filter(k=>STATE.players[k].isBot && k!=='SYSTEM_MM').length + (payload.amount || 1)); }
+    if (type === 'ACTION_ADD_BOT') { window.adjustBots(Object.keys(STATE.players).filter(k=>STATE.players[k].isBot && !k.startsWith('SYSTEM_')).length + (payload.amount || 1)); }
+    if (type === 'ACTION_CLAIM_FEES') handleClaimFeesHost(payload.tokenId, senderId);
+    if (type === 'ACTION_UPGRADE_EXCHANGE') handleUpgradeExchangeHost(payload.tokenId, payload.exchange, senderId);
+    
+    // Racing Actions
+    if (type === 'ACTION_TUNE_CAR') handleTuneCarHost(payload.type, senderId);
+    if (type === 'ACTION_CREATE_RACE') handleCreateRaceHost(payload.bet, senderId);
+    if (type === 'ACTION_JOIN_RACE') handleJoinRaceHost(payload.raceId, senderId);
+    if (type === 'ACTION_START_RACE') handleStartRaceHost(payload.raceId, senderId);
+
     if (type === 'ACTION_CHARITY') {
         const p = STATE.players[senderId];
         if(p && p.solBalance >= payload.amount && payload.amount > 0) {
@@ -697,6 +721,7 @@ function processMessageAsClient(data) {
         STATE.tokens = payload.tokens; 
         STATE.gameState = payload.gameState; 
         STATE.chat = payload.chat;
+        STATE.races = payload.races || {};
         if(payload.posts) STATE.posts = payload.posts;
         if(payload.totalPlayerCount) STATE.totalPlayerCount = payload.totalPlayerCount;
         
@@ -719,7 +744,7 @@ function getCompressedState() {
     const bots = [];
     
     Object.values(STATE.players).forEach(p => {
-        if (!p.isBot || p.id === 'SYSTEM_MM') humans[p.id] = p;
+        if (!p.isBot || p.id.startsWith('SYSTEM_')) humans[p.id] = p;
         else bots.push(p);
     });
 
@@ -733,7 +758,7 @@ function getCompressedState() {
     Object.values(STATE.tokens).forEach(t => {
         compressedTokens[t.id] = {
             ...t,
-            history: t.history ? t.history.slice(-25) : [] // Solo enviar últimas velas para UI, el Host retiene todas
+            history: t.history ? t.history.slice(-25) : [] 
         };
     });
 
@@ -742,6 +767,7 @@ function getCompressedState() {
         tokens: compressedTokens, 
         chat: STATE.chat.slice(0, 30), 
         posts: STATE.posts.slice(0, 30), 
+        races: STATE.races,
         gameState: STATE.gameState,
         totalPlayerCount: Object.keys(STATE.players).length
     };
@@ -753,7 +779,7 @@ function broadcastState() {
     if (STATE.roomConfig.isHost) {
         requestUIRender(); 
         const syncTime = Date.now();
-        const syncPayload = getCompressedState(); // MAGIA DE LATENCIA CERO: Paquete ultra ligero
+        const syncPayload = getCompressedState(); 
 
         // P2P ULTRA RÁPIDO (0ms Latencia - Sin Throttling)
         if (window.clientConns) {
@@ -763,7 +789,7 @@ function broadcastState() {
             });
         }
 
-        // MQTT Fallback (Ligero) - Limitado a 1 vez por segundo para no saturar el websocket público
+        // MQTT Fallback (Ligero) - Limitado a 1 vez por segundo
         if (!STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
             if (syncTime - lastMqttBroadcast > 1000) {
                 lastMqttBroadcast = syncTime;
@@ -804,6 +830,12 @@ function handlePostHost(text, playerId) {
     if(!text || text.trim() === '') return;
     const author = STATE.players[playerId];
     if(!author) return;
+    
+    // Solo cuentas verificadas pueden publicar en DegenX
+    if(!author.isVerified) {
+        hostEmitAlert(playerId, "Solo cuentas verificadas (Check Azul o Exchanges) pueden postear en DegenX.", "❌");
+        return;
+    }
 
     STATE.posts.unshift({
         id: 'post_' + Date.now() + Math.random().toString(36).substr(2,5),
@@ -834,12 +866,33 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
         currentCandle = { time: Date.now(), open: currentPrice, high: currentPrice, low: currentPrice, close: currentPrice, vol: 0 };
     }
 
+    // Fee system (2%)
+    let netAmount = amount;
+    if(!player.isBot || player.id.startsWith('SYSTEM_')) {
+        const fee = amount * 0.02;
+        netAmount = amount - fee;
+        token.accumulatedFees = (token.accumulatedFees || 0) + (isBuy ? fee : 0); // Fees solo se guardan en USD para reclamar
+    }
+
     if (isBuy) {
         if (player.solBalance < amount) return;
-        const tokensOut = calcTokensOut(amount, token.solPool, token.tokenPool);
-        token.solPool += amount; token.tokenPool -= tokensOut;
+        const tokensOut = calcTokensOut(netAmount, token.solPool, token.tokenPool);
+        token.solPool += netAmount; token.tokenPool -= tokensOut;
         player.solBalance -= amount; player.portfolio[tokenId] = (player.portfolio[tokenId] || 0) + tokensOut;
         player.tradesInfo[tokenId] = { entryPrice: getPrice(token.solPool, token.tokenPool) };
+        
+        // CopyTrading Hook
+        if(!silent && player.followers > 50 && (player.reputation > 50 || !player.isBot)) {
+            const numCopiers = Math.min(Math.floor(player.followers / 100), 10);
+            const copyBots = Object.values(STATE.players).filter(p => p.isBot && p.strategy === 'CopyTrader' && p.solBalance > 5);
+            for(let i=0; i<numCopiers && i<copyBots.length; i++) {
+                setTimeout(() => {
+                    handleTradeHost(tokenId, true, copyBots[i].solBalance * 0.2, copyBots[i].id, true);
+                    broadcastState();
+                }, 1000 + Math.random()*3000);
+            }
+        }
+
     } else {
         const currentBal = player.portfolio[tokenId] || 0;
         let sellAmount = amount;
@@ -849,8 +902,12 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
         if (sellAmount > (token.tokenPool * 0.5) && !player.isBot) player.reputation = Math.max(1, (player.reputation || 1) - 30);
 
         const solOut = calcSolOut(sellAmount, token.solPool, token.tokenPool);
+        const fee = solOut * 0.02;
+        const netSolOut = player.isBot && !player.id.startsWith('SYSTEM_') ? solOut : (solOut - fee);
+        token.accumulatedFees = (token.accumulatedFees || 0) + (player.isBot && !player.id.startsWith('SYSTEM_') ? 0 : fee);
+
         token.solPool -= solOut; token.tokenPool += sellAmount;
-        player.solBalance += solOut; player.portfolio[tokenId] -= sellAmount;
+        player.solBalance += netSolOut; player.portfolio[tokenId] -= sellAmount;
         if(player.portfolio[tokenId] <= 0) delete player.tradesInfo[tokenId];
     }
 
@@ -861,6 +918,7 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
 
     let milestoneMsg = null;
     let postMsg = null;
+    let posterSys = 'SYSTEM_MM';
     const mcapUsd = newPrice * token.initialSupply; 
     const realLiq = token.solPool - VIRTUAL_USD_RESERVE;
     if (!token.milestones) token.milestones = {};
@@ -868,8 +926,8 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
 
     if (mcapUsd >= CEX_LISTING_MCAP && !token.milestones.mCEX) {
         token.milestones.mCEX = true;
-        milestoneMsg = `🏦 ¡ALERTA GLOBAL! $${token.ticker} HA SIDO LISTADA EN BINANCE. VOLUMEN INSTITUCIONAL ENTRANTE.`;
-        postMsg = `🚨 BOOM 🚨 $${token.ticker} acaba de ser listada en los principales CEX. ¡Esto va a mil millones! 🚀`;
+        milestoneMsg = `🏦 ¡ALERTA GLOBAL! $${token.ticker} HA SIDO LISTADA. VOLUMEN INSTITUCIONAL ENTRANTE.`;
+        postMsg = `🚨 BOOM 🚨 $${token.ticker} acaba de ser listada. ¡Esto va a mil millones! 🚀`;
         if(creator) { 
             creator.reputation = Math.min(100, (creator.reputation || 1) + 50); 
             creator.followers += 20000 + Math.floor(Math.random() * 10000); 
@@ -899,14 +957,17 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
     if (!silent && milestoneMsg) {
         STATE.chat.unshift({ id: Date.now() + Math.random(), sender: 'System', text: milestoneMsg, sys: true });
         STATE.chat = STATE.chat.slice(0, 80);
-        if(postMsg) handlePostHost(postMsg, 'SYSTEM_MM');
+        if(postMsg) handlePostHost(postMsg, posterSys);
     }
 }
 
 function handleLaunchHost(name, ticker, image, devBuy, playerId) {
     const player = STATE.players[playerId];
     const fee = 1; 
-    if (!player || player.solBalance < (fee + devBuy)) return;
+    // Cap max devbuy to 1.5 USD to prevent massive immediate supply monopolization
+    const actualDevBuy = Math.min(devBuy, 1.5); 
+
+    if (!player || player.solBalance < (fee + actualDevBuy)) return;
 
     player.solBalance -= fee;
     const tokenId = ticker.toUpperCase() + '_' + Date.now();
@@ -915,7 +976,7 @@ function handleLaunchHost(name, ticker, image, devBuy, playerId) {
     STATE.tokens[tokenId] = {
         id: tokenId, name, ticker: ticker.toUpperCase(), image: image, creatorId: playerId, creatorName: player.name,
         solPool: VIRTUAL_USD_RESERVE, tokenPool: 1000000000, initialSupply: 1000000000, createdAt: Date.now(),
-        milestones: {}, history: [],
+        milestones: {}, history: [], exchange: 'Pump.fun', accumulatedFees: 0,
         currentCandle: { time: Date.now(), open: initialPrice, high: initialPrice, low: initialPrice, close: initialPrice, vol: 0 }
     };
     
@@ -926,10 +987,8 @@ function handleLaunchHost(name, ticker, image, devBuy, playerId) {
     STATE.chat.unshift({ id: Date.now(), sender: 'System', text: logMsg, sys: true });
     STATE.chat = STATE.chat.slice(0, 80);
     
-    handlePostHost(`Acabo de desplegar $${STATE.tokens[tokenId].ticker}. El contrato es seguro. ¡Ape in! 🦍`, playerId);
-
     hostEmitAlert(playerId, logMsg, '🚀');
-    if (devBuy > 0) handleTradeHost(tokenId, true, devBuy, playerId, false);
+    if (actualDevBuy > 0) handleTradeHost(tokenId, true, actualDevBuy, playerId, false);
     broadcastState();
 }
 
@@ -940,7 +999,6 @@ function handleBurnHost(tokenId, amount, playerId) {
     player.reputation = Math.min(100, (player.reputation || 1) + 1);
     STATE.chat.unshift({ id: Date.now(), sender: 'System', text: `🔥 ${player.name} quemó ${formatToken(amount)} $${token.ticker}`, sys: true });
     STATE.chat = STATE.chat.slice(0, 80); 
-    handlePostHost(`Acabo de mandar ${formatToken(amount)} $${token.ticker} al abismo. Menos supply, más precio. De nada. 🔥`, playerId);
     broadcastState();
 }
 
@@ -963,12 +1021,132 @@ function handleBuyLuxuryHost(itemId, playerId) {
     const player = STATE.players[playerId]; let item = null;
     for(const cat in SHOP_CATEGORIES) { const found = SHOP_CATEGORIES[cat].find(i => i.id === itemId); if(found) item = found; }
     if (!player || !item || player.solBalance < item.price) return;
-    player.solBalance -= item.price; player.luxuries = [...(player.luxuries || []), item.icon];
+    
+    // Evitar múltiples checks azules
+    if(item.isVerified && player.isVerified) return;
+
+    player.solBalance -= item.price; 
+    if(item.isVerified) {
+        player.isVerified = true;
+    } else {
+        player.luxuries = [...(player.luxuries || []), item.icon];
+    }
+
+    if(item.isCar) {
+        player.carTuning = { speedLevel: 1, accelLevel: 1 };
+    }
+
     player.reputation = Math.min(100, (player.reputation || 1) + item.rep);
     player.followers += item.rep * 10; 
     STATE.chat.unshift({ id: Date.now(), sender: 'System', text: `🛒 ${player.name} presumió su nuevo ${item.name} ${item.icon}`, sys: true });
     STATE.chat = STATE.chat.slice(0, 80); 
-    handlePostHost(`Flexeando mi nuevo ${item.name} ${item.icon}. Gracias por la liquidez plebeyos. 💸`, playerId);
+    broadcastState();
+}
+
+function handleClaimFeesHost(tokenId, playerId) {
+    const token = STATE.tokens[tokenId];
+    const player = STATE.players[playerId];
+    if(!token || !player || token.creatorId !== playerId || token.accumulatedFees <= 0) return;
+
+    player.solBalance += token.accumulatedFees;
+    hostEmitAlert(playerId, `Has reclamado ${formatUSD(token.accumulatedFees)} en Fees del exchange.`, "💰");
+    token.accumulatedFees = 0;
+    broadcastState();
+}
+
+function handleUpgradeExchangeHost(tokenId, exchangeName, playerId) {
+    const token = STATE.tokens[tokenId];
+    const player = STATE.players[playerId];
+    if(!token || !player || token.creatorId !== playerId) return;
+
+    const costs = { 'CoinMarketCap': 100, 'KuCoin': 1000, 'Binance': 5000 };
+    const cost = costs[exchangeName];
+    if(!cost || player.solBalance < cost) return;
+
+    player.solBalance -= cost;
+    token.exchange = exchangeName;
+    
+    let sysAccount = 'SYSTEM_MM';
+    if(exchangeName === 'CoinMarketCap') sysAccount = 'SYSTEM_CMC';
+    if(exchangeName === 'Binance') sysAccount = 'SYSTEM_BINANCE';
+
+    handlePostHost(`Nuevo Listado Oficial: $${token.ticker} acaba de ser listado en ${exchangeName}. 🚀🔥`, sysAccount);
+    broadcastState();
+}
+
+// ---- RACING LOGIC ----
+function handleCreateRaceHost(bet, playerId) {
+    const player = STATE.players[playerId];
+    if(!player || player.solBalance < bet || bet < 1) return;
+    
+    player.solBalance -= bet;
+    const raceId = 'race_' + Date.now();
+    STATE.races[raceId] = {
+        id: raceId, hostId: playerId, hostName: player.name, bet: bet, state: 'waiting',
+        participants: [{ id: playerId, name: player.name, avatar: player.avatar, tuning: player.carTuning }]
+    };
+    broadcastState();
+}
+
+function handleJoinRaceHost(raceId, playerId) {
+    const race = STATE.races[raceId];
+    const player = STATE.players[playerId];
+    if(!race || !player || race.state !== 'waiting' || player.solBalance < race.bet) return;
+    
+    if(race.participants.find(p => p.id === playerId)) return;
+    
+    player.solBalance -= race.bet;
+    race.participants.push({ id: playerId, name: player.name, avatar: player.avatar, tuning: player.carTuning });
+    broadcastState();
+}
+
+function handleStartRaceHost(raceId, playerId) {
+    const race = STATE.races[raceId];
+    if(!race || race.state !== 'waiting' || race.hostId !== playerId || race.participants.length < 2) return;
+    
+    race.state = 'racing';
+    broadcastState();
+
+    setTimeout(() => {
+        // Calcular ganador basado en tuning + RNG
+        let bestScore = -1;
+        let winner = null;
+        race.participants.forEach(p => {
+            const speed = p.tuning?.speedLevel || 1;
+            const accel = p.tuning?.accelLevel || 1;
+            const score = (speed * 0.6) + (accel * 0.4) + (Math.random() * 5); // Suerte
+            p.score = score;
+            if(score > bestScore) { bestScore = score; winner = p; }
+        });
+        
+        race.state = 'finished';
+        race.winner = winner.id;
+        
+        const pot = race.bet * race.participants.length;
+        const winnerPlayer = STATE.players[winner.id];
+        if(winnerPlayer) winnerPlayer.solBalance += pot;
+        
+        handleChatHost(`🏁 ${winner.name} ganó la carrera y se llevó ${formatUSD(pot)}!`, 'System', true);
+        broadcastState();
+        
+        // Limpiar carrera despues de 10s
+        setTimeout(() => {
+            delete STATE.races[raceId];
+            broadcastState();
+        }, 10000);
+
+    }, 3000);
+}
+
+function handleTuneCarHost(type, playerId) {
+    const player = STATE.players[playerId];
+    if(!player || !player.carTuning) return;
+    const cost = 20;
+    if(player.solBalance < cost) return;
+    
+    player.solBalance -= cost;
+    if(type === 'speed') player.carTuning.speedLevel += 1;
+    if(type === 'accel') player.carTuning.accelLevel += 1;
     broadcastState();
 }
 
@@ -983,26 +1161,15 @@ function startBotBrain() {
     botInterval = setInterval(() => {
         if (!STATE.roomConfig.isHost || !STATE.roomConfig.botsEnabled || STATE.gameState !== 'playing') return;
         
-        const botList = Object.values(STATE.players).filter(p => p.isBot && p.id !== 'SYSTEM_MM');
+        const botList = Object.values(STATE.players).filter(p => p.isBot && !p.id.startsWith('SYSTEM_'));
         if (botList.length === 0) return;
 
         const tokenKeys = Object.keys(STATE.tokens);
-        // CPU OPTIMIZATION: Solo simular hasta 50 trades simultáneos para no matar la pestaña del host. El efecto de 2000 activos se siente igual.
         const activeCount = Math.min(50, Math.max(5, Math.floor(botList.length * 0.05)));
         const activeBots = botList.sort(() => 0.5 - Math.random()).slice(0, activeCount);
         let didTrade = false;
 
         activeBots.forEach(bot => {
-            if(STATE.roomConfig.botPostsEnabled && tokenKeys.length > 0 && Math.random() < 0.02) {
-                const randomT = STATE.tokens[tokenKeys[Math.floor(Math.random() * tokenKeys.length)]];
-                const holding = bot.portfolio[randomT.id];
-                if(holding && holding > 0) {
-                    handlePostHost(`Apeando fuerte en $${randomT.ticker}. Este es el próximo 100x garantizado. No digan que no avisé.`, bot.id);
-                } else if(Math.random() < 0.3) {
-                    handlePostHost(`¿Están viendo $${randomT.ticker}? Gráfico alcista, me gusta. 👀`, bot.id);
-                }
-            }
-
             Object.keys(bot.portfolio).forEach(tokenId => {
                 const amount = bot.portfolio[tokenId]; if (amount <= 0) return;
                 const token = STATE.tokens[tokenId]; if (!token) return;
@@ -1019,6 +1186,7 @@ function startBotBrain() {
                     if (bot.strategy === 'Scalper' && Math.random() < 0.1) sellRatio = 0.5;
                     if (bot.strategy === 'Degen' && Math.random() < 0.15) sellRatio = 1.0;
                     if (bot.strategy === 'Whale' && Math.random() < 0.05) sellRatio = 0.8;
+                    if (bot.strategy === 'VolumeSniper' && pnlPercent > 20) sellRatio = 1.0;
                     if (bot.strategy === 'PaperHands' && pnlPercent <= -5) sellRatio = 1.0; 
                 }
 
@@ -1029,6 +1197,7 @@ function startBotBrain() {
                 const attractiveTokens = tokenKeys.map(tid => STATE.tokens[tid]).filter(t => {
                     const ageMs = Date.now() - t.createdAt; const creatorRep = STATE.players[t.creatorId]?.reputation || 1;
                     if (bot.strategy === 'Sniper') return ageMs < 120000;
+                    if (bot.strategy === 'VolumeSniper') return ageMs > 300000 && t.currentCandle.vol > 10;
                     if (bot.strategy === 'Degen' || bot.strategy === 'PaperHands') return true; 
                     if (creatorRep < 10 && bot.strategy !== 'RugPuller') return false; 
                     
@@ -1045,7 +1214,7 @@ function startBotBrain() {
                 if (attractiveTokens.length > 0) {
                     const targetToken = attractiveTokens[Math.floor(Math.random() * attractiveTokens.length)];
                     let investRatio = 0.1;
-                    if (bot.strategy === 'Degen' || bot.strategy === 'Sniper' || bot.strategy === 'RugPuller') investRatio = 0.5; 
+                    if (bot.strategy === 'Degen' || bot.strategy === 'Sniper' || bot.strategy === 'RugPuller' || bot.strategy === 'VolumeSniper') investRatio = 0.5; 
                     if (bot.strategy === 'Whale') investRatio = 0.2; 
                     const investAmount = bot.solBalance * investRatio * (0.8 + Math.random() * 0.4); 
                     if (investAmount > 0.1) { handleTradeHost(targetToken.id, true, investAmount, bot.id, true); didTrade = true; }
@@ -1076,8 +1245,15 @@ function dispatchAction(type, payload) {
         if(type==='ACTION_POST') handlePostHost(payload.text, STATE.myProfile.id);
         if(type==='ACTION_GIFT') handleGiftHost(payload.to, payload.asset, payload.amount, STATE.myProfile.id);
         if(type==='ACTION_BUY_LUXURY') handleBuyLuxuryHost(payload.itemId, STATE.myProfile.id);
-        // Se actualizó para aceptar cantidades personalizadas enviadas por el Host
-        if(type==='ACTION_ADD_BOT') { window.adjustBots(Object.keys(STATE.players).filter(k=>STATE.players[k].isBot && k!=='SYSTEM_MM').length + (payload.amount || 1)); }
+        if(type==='ACTION_ADD_BOT') { window.adjustBots(Object.keys(STATE.players).filter(k=>STATE.players[k].isBot && !k.startsWith('SYSTEM_')).length + (payload.amount || 1)); }
+        if(type==='ACTION_CLAIM_FEES') handleClaimFeesHost(payload.tokenId, STATE.myProfile.id);
+        if(type==='ACTION_UPGRADE_EXCHANGE') handleUpgradeExchangeHost(payload.tokenId, payload.exchange, STATE.myProfile.id);
+        
+        if(type==='ACTION_CREATE_RACE') handleCreateRaceHost(payload.bet, STATE.myProfile.id);
+        if(type==='ACTION_JOIN_RACE') handleJoinRaceHost(payload.raceId, STATE.myProfile.id);
+        if(type==='ACTION_START_RACE') handleStartRaceHost(payload.raceId, STATE.myProfile.id);
+        if(type==='ACTION_TUNE_CAR') handleTuneCarHost(payload.type, STATE.myProfile.id);
+
         if(type==='ACTION_CHARITY') {
             const p = STATE.players[STATE.myProfile.id];
             if(p && p.solBalance >= payload.amount && payload.amount > 0) {
@@ -1181,12 +1357,12 @@ function updateDynamicDOM() {
                 let senderTag = msg.sender;
                 if(!msg.sys && msg.sender !== 'System') {
                     const sp = Object.values(STATE.players).find(p => p.name === msg.sender);
-                    if(sp) { const rank = getRank(sp.solBalance + (sp.solStaked||0)); senderTag = `<span class="opacity-70">${rank.emoji}</span> ${msg.sender}`; }
+                    if(sp) { const rank = getRank(sp.solBalance + (sp.solStaked||0)); senderTag = `<span class="opacity-70">${rank.emoji}</span> ${msg.sender} ${sp.isVerified?'<span class="text-blue-400">✅</span>':''}`; }
                 }
                 
                 return `
                 <div class="p-3 rounded-xl ${msg.sys ? 'text-slate-400 font-mono text-[10px] md:text-xs border border-slate-800/50 bg-slate-950/80 shadow-inner' : 'bg-slate-800/80 text-slate-200 border border-slate-700/50'}">
-                    ${!msg.sys ? `<div class="font-bold text-emerald-400 text-xs mb-1 flex items-center">${senderTag}</div>` : ''}
+                    ${!msg.sys ? `<div class="font-bold text-emerald-400 text-xs mb-1 flex items-center gap-1">${senderTag}</div>` : ''}
                     ${isImg ? `<img src="${msg.text}" class="max-w-full rounded-lg mt-2 cursor-pointer border border-slate-700 hover:border-emerald-500 transition-colors" onclick="window.open('${msg.text}', '_blank')"/>` : `<div class="leading-relaxed break-words">${msg.text}</div>`}
                 </div>`;
             }).join('') || `<div class="text-center text-slate-500 py-10 italic">Aún no hay mensajes.</div>`;
@@ -1201,12 +1377,13 @@ function updateDynamicDOM() {
     if (STATE._renderedTabId !== currentTabId) {
         if (STATE.selectedTokenId) el.innerHTML = RenderTokenDetailSkeleton();
         else if (STATE.activeTab === 'market') el.innerHTML = RenderMarketSkeleton();
+        else if (STATE.activeTab === 'exchanges') el.innerHTML = RenderExchangesSkeleton();
         else if (STATE.activeTab === 'social') el.innerHTML = RenderSocialSkeleton();
         else if (STATE.activeTab === 'portfolio') el.innerHTML = RenderLeaderboardSkeleton();
         else if (STATE.activeTab === 'shop') el.innerHTML = RenderShop();
         else if (STATE.activeTab === 'launch') el.innerHTML = RenderLaunch();
-        else if (STATE.activeTab === 'streams') el.innerHTML = RenderStreamsSkeleton();
         else if (STATE.activeTab === 'casino') el.innerHTML = RenderCasino();
+        else if (STATE.activeTab === 'racing') el.innerHTML = RenderRacing();
         else if (STATE.activeTab === 'bank') el.innerHTML = RenderBank();
         else if (STATE.activeTab === 'charity') el.innerHTML = RenderCharity();
         STATE._renderedTabId = currentTabId;
@@ -1214,9 +1391,10 @@ function updateDynamicDOM() {
 
     if (STATE.selectedTokenId) UpdateTokenDetailDynamic();
     else if (STATE.activeTab === 'market') UpdateMarketDynamic();
+    else if (STATE.activeTab === 'exchanges') UpdateExchangesDynamic();
     else if (STATE.activeTab === 'social') UpdateSocialDynamic();
     else if (STATE.activeTab === 'portfolio') UpdateLeaderboardDynamic();
-    else if (STATE.activeTab === 'streams') UpdateStreamsDynamic();
+    else if (STATE.activeTab === 'racing') UpdateRacingDynamic();
 }
 
 function ViewLobby() {
@@ -1253,13 +1431,13 @@ function ViewLobby() {
                             <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center gap-3">
                                 <span class="text-3xl">${p.avatar}</span>
                                 <div class="flex-1 min-w-0">
-                                    <div class="font-bold text-sm text-white truncate">${p.name} ${p.id === STATE.myProfile.id ? '<span class="text-[10px] text-emerald-400 ml-1 uppercase bg-emerald-500/10 px-1 rounded">(Tú)</span>' : ''}</div>
+                                    <div class="font-bold text-sm text-white truncate">${p.name} ${p.isVerified?'<span class="text-blue-400">✅</span>':''} ${p.id === STATE.myProfile.id ? '<span class="text-[10px] text-emerald-400 ml-1 uppercase bg-emerald-500/10 px-1 rounded">(Tú)</span>' : ''}</div>
                                     <div class="flex gap-2 items-center mt-0.5 flex-wrap">
                                         <span class="text-[9px] ${r.color} uppercase tracking-wider font-bold">${r.emoji} ${r.name}</span>
-                                        ${p.isBot && p.id!=='SYSTEM_MM' ? `<span class="text-[9px] text-purple-400 font-mono uppercase tracking-wider">Strat: ${p.strategy}</span>` : ''}
+                                        ${p.isBot && !p.id.startsWith('SYSTEM_') ? `<span class="text-[9px] text-purple-400 font-mono uppercase tracking-wider">Strat: ${p.strategy}</span>` : ''}
                                     </div>
                                 </div>
-                                ${p.isBot ? `<span class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full ml-auto font-bold uppercase shrink-0">BOT</span>` : ''}
+                                ${p.isBot ? `<span class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full ml-auto font-bold uppercase shrink-0">${p.id.startsWith('SYSTEM_') ? 'SYS' : 'BOT'}</span>` : ''}
                             </div>
                         `}).join('')}
                     </div>
@@ -1290,7 +1468,7 @@ function ViewLobby() {
                         ${STATE.roomConfig.botsEnabled ? `
                         <label class="block bg-slate-900 p-4 rounded-xl border border-slate-800">
                             <div class="flex justify-between text-[10px] text-slate-400 font-bold mb-2 uppercase tracking-wide"><span>Bots Iniciales:</span><span class="${STATE.roomConfig.isOffline ? 'text-purple-400' : 'text-emerald-400'} font-mono" id="lbl-bots-count">${STATE.roomConfig.botCount}</span></div>
-                            <input type="range" min="1" max="10000" value="${STATE.roomConfig.botCount}" oninput="document.getElementById('lbl-bots-count').innerText=this.value; STATE.roomConfig.botCount=parseInt(this.value);" onchange="window.adjustBots(parseInt(this.value));" class="w-full ${STATE.roomConfig.isOffline ? 'accent-purple-500' : 'accent-emerald-500'} h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
+                            <input type="range" min="1" max="1000" value="${STATE.roomConfig.botCount}" oninput="document.getElementById('lbl-bots-count').innerText=this.value; STATE.roomConfig.botCount=parseInt(this.value);" onchange="window.adjustBots(parseInt(this.value));" class="w-full ${STATE.roomConfig.isOffline ? 'accent-purple-500' : 'accent-emerald-500'} h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
                         </label>` : ''}
                     </div>` : ''}
                 </div>
@@ -1328,13 +1506,14 @@ function ViewGame() {
             </div>
 
             <nav class="bg-slate-900 border-b border-slate-800 p-2.5 md:p-5 flex justify-between items-center shrink-0">
-                <div class="hidden md:flex gap-3 xl:gap-6 overflow-x-auto hide-scrollbar">
+                <div class="hidden md:flex gap-3 xl:gap-4 overflow-x-auto hide-scrollbar">
                     <button onclick="switchTab('social');" class="font-black text-[10px] uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='social' ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Megaphone} DegenX</button>
+                    <button onclick="switchTab('exchanges');" class="font-black text-[10px] uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='exchanges' ? 'text-yellow-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Building} Exchanges</button>
                     <button onclick="switchTab('market');" class="font-black text-[10px] uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='market' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Chart} Mercado</button>
+                    <button onclick="switchTab('racing');" class="font-black text-[10px] uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='racing' ? 'text-red-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Flag} Carreras</button>
                     <button onclick="switchTab('portfolio');" class="font-black text-[10px] uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='portfolio' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Users} Top</button>
                     <button onclick="switchTab('shop');" class="font-black text-[10px] uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='shop' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.PieChart} Lujos</button>
                     <button onclick="switchTab('casino');" class="font-black text-[10px] uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='casino' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Dice} Casino</button>
-                    <button onclick="switchTab('bank');" class="font-black text-[10px] uppercase tracking-widest transition-colors flex gap-2 items-center ${STATE.activeTab==='bank' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}">${Icons.Bank} Banco</button>
                 </div>
                 
                 <div class="flex items-center gap-3 ml-auto">
@@ -1358,7 +1537,7 @@ function ViewGame() {
                     <div class="h-6 w-px bg-slate-800 mx-1 hidden sm:block"></div>
 
                     <div class="text-right hidden sm:block">
-                        <div class="text-[9px] text-slate-500 uppercase font-bold tracking-wider">${STATE.myProfile.name}</div>
+                        <div class="text-[9px] text-slate-500 uppercase font-bold tracking-wider">${STATE.myProfile.name} ${me.isVerified?'<span class="text-blue-400">✅</span>':''}</div>
                         <div class="text-emerald-400 font-bold font-mono text-sm" id="my-balance">$0.00</div>
                     </div>
                     <div class="relative cursor-pointer shrink-0" onclick="STATE.viewingProfileId='${STATE.myProfile.id}'; STATE.giftTargetId=null; renderModal();">
@@ -1376,12 +1555,11 @@ function ViewGame() {
         <!-- MOBILE BOTTOM NAV -->
         <div class="md:hidden absolute bottom-0 left-0 w-full bg-slate-950 border-t border-slate-800 flex overflow-x-auto hide-scrollbar gap-1 p-2 z-50 shadow-[0_-10px_20px_rgba(0,0,0,0.5)]">
            <button onclick="switchTab('social');" class="flex-1 min-w-[55px] flex flex-col items-center justify-center gap-0.5 py-1 ${STATE.activeTab==='social'?'text-blue-400':'text-slate-500'}">${Icons.Megaphone}<span class="text-[8px] font-bold uppercase">DegenX</span></button>
+           <button onclick="switchTab('exchanges');" class="flex-1 min-w-[55px] flex flex-col items-center justify-center gap-0.5 py-1 ${STATE.activeTab==='exchanges'?'text-yellow-400':'text-slate-500'}">${Icons.Building}<span class="text-[8px] font-bold uppercase">Ex</span></button>
            <button onclick="switchTab('market');" class="flex-1 min-w-[55px] flex flex-col items-center justify-center gap-0.5 py-1 ${STATE.activeTab==='market'?'text-emerald-400':'text-slate-500'}">${Icons.Chart}<span class="text-[8px] font-bold uppercase">Mercado</span></button>
+           <button onclick="switchTab('racing');" class="flex-1 min-w-[55px] flex flex-col items-center justify-center gap-0.5 py-1 ${STATE.activeTab==='racing'?'text-red-400':'text-slate-500'}">${Icons.Flag}<span class="text-[8px] font-bold uppercase">Race</span></button>
            <button onclick="switchTab('portfolio');" class="flex-1 min-w-[55px] flex flex-col items-center justify-center gap-0.5 py-1 ${STATE.activeTab==='portfolio'?'text-emerald-400':'text-slate-500'}">${Icons.Users}<span class="text-[8px] font-bold uppercase">Top</span></button>
            <button onclick="switchTab('shop');" class="flex-1 min-w-[55px] flex flex-col items-center justify-center gap-0.5 py-1 ${STATE.activeTab==='shop'?'text-emerald-400':'text-slate-500'}">${Icons.PieChart}<span class="text-[8px] font-bold uppercase">Lujos</span></button>
-           <button onclick="switchTab('casino');" class="flex-1 min-w-[55px] flex flex-col items-center justify-center gap-0.5 py-1 ${STATE.activeTab==='casino'?'text-emerald-400':'text-slate-500'}">${Icons.Dice}<span class="text-[8px] font-bold uppercase">Casino</span></button>
-           <button onclick="switchTab('bank');" class="flex-1 min-w-[55px] flex flex-col items-center justify-center gap-0.5 py-1 ${STATE.activeTab==='bank'?'text-emerald-400':'text-slate-500'}">${Icons.Bank}<span class="text-[8px] font-bold uppercase">Banco</span></button>
-           <button onclick="switchTab('charity');" class="flex-1 min-w-[55px] flex flex-col items-center justify-center gap-0.5 py-1 ${STATE.activeTab==='charity'?'text-pink-500':'text-slate-500'}">${Icons.Parachute}<span class="text-[8px] font-bold uppercase">Ayuda</span></button>
            <button onclick="switchTab('chat');" class="flex-1 min-w-[55px] flex flex-col items-center justify-center gap-0.5 py-1 ${STATE.activeTab==='chat'?'text-emerald-400':'text-slate-500'}">${Icons.Message}<span class="text-[8px] font-bold uppercase">Chat</span></button>
         </div>
     </div>`;
@@ -1395,21 +1573,28 @@ function RenderSocialSkeleton() {
     return `
     <div class="max-w-3xl mx-auto flex flex-col h-full animate-fade-in">
         <div class="flex items-center justify-between mb-4 md:mb-6 shrink-0">
-            <h1 class="text-2xl md:text-3xl font-black text-white flex items-center gap-2 tracking-tight"><span class="text-blue-500">${Icons.Megaphone}</span> DegenX</h1>
+            <h1 class="text-2xl md:text-3xl font-black text-white flex items-center gap-2 tracking-tight"><span class="text-blue-500">${Icons.Megaphone}</span> DegenX <span class="text-xs bg-blue-500/20 text-blue-400 px-2 rounded-full border border-blue-500/30">Verified Only</span></h1>
             <div class="bg-blue-900/20 border border-blue-500/30 text-blue-400 px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-widest text-center shadow-inner">
                 Tus Seguidores<br><span class="text-lg md:text-xl font-black">${me.followers.toLocaleString()}</span>
             </div>
         </div>
 
+        ${me.isVerified ? `
         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-4 shrink-0 shadow-lg">
             <form onsubmit="event.preventDefault(); const val=document.getElementById('social-input').value; if(val.trim()){ dispatchAction('ACTION_POST', {text: val}); document.getElementById('social-input').value=''; STATE.socialInput=''; }" class="flex flex-col gap-3">
                 <textarea id="social-input" rows="2" placeholder="¿Cuál es la próxima gema, ${STATE.myProfile.name}? Usa $TICKER para etiquetar monedas." value="${STATE.socialInput}" oninput="STATE.socialInput = this.value" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm md:text-base focus:outline-none focus:border-blue-500 transition-colors resize-none placeholder:text-slate-600"></textarea>
                 <div class="flex justify-between items-center">
-                    <span class="text-[9px] text-slate-500 uppercase font-bold tracking-widest">Postea para ganar influencia</span>
+                    <span class="text-[9px] text-slate-500 uppercase font-bold tracking-widest">Publicando como cuenta verificada ✅</span>
                     <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-black px-6 py-2 rounded-xl transition-colors shadow-[0_0_15px_rgba(37,99,235,0.3)] tracking-wider text-xs md:text-sm">Postear</button>
                 </div>
             </form>
+        </div>` : `
+        <div class="bg-slate-900/50 border border-slate-800 border-dashed rounded-2xl p-4 mb-4 shrink-0 flex items-center justify-center gap-3">
+            <span class="text-3xl">🔒</span>
+            <div class="text-slate-400 text-xs md:text-sm">Solo cuentas verificadas pueden postear.<br>Consigue el <b>Check Azul</b> en la tienda de Lujos.</div>
+            <button onclick="switchTab('shop');" class="bg-slate-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors">Ir a Tienda</button>
         </div>
+        `}
 
         <div id="social-feed" class="flex-1 overflow-y-auto space-y-3 pb-10 min-h-0 pr-1"></div>
     </div>`;
@@ -1420,7 +1605,7 @@ function UpdateSocialDynamic() {
     if(!feed) return;
 
     if(!STATE.posts || STATE.posts.length === 0) {
-        feed.innerHTML = `<div class="text-center text-slate-600 py-10 font-bold flex flex-col items-center justify-center h-full"><span class="text-4xl mb-3 opacity-50">${Icons.Megaphone}</span>El timeline está vacío. Sé el primero en hacer un call.</div>`;
+        feed.innerHTML = `<div class="text-center text-slate-600 py-10 font-bold flex flex-col items-center justify-center h-full"><span class="text-4xl mb-3 opacity-50">${Icons.Megaphone}</span>El timeline está vacío.</div>`;
         return;
     }
 
@@ -1439,11 +1624,11 @@ function UpdateSocialDynamic() {
         return `
         <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-md hover:border-slate-700 transition-colors relative">
             <div class="flex items-start gap-3">
-                <div class="text-3xl bg-slate-800 w-12 h-12 rounded-full flex items-center justify-center cursor-pointer shrink-0 border border-slate-700 shadow-inner" onclick="STATE.viewingProfileId='${p.authorId}'; STATE.giftTargetId=null; renderModal();">${p.authorAvatar}</div>
+                <div class="text-3xl bg-slate-800 w-12 h-12 rounded-full flex items-center justify-center cursor-pointer shrink-0 border border-slate-700 shadow-inner" onclick="STATE.viewingProfileId='${p.authorId}'; STATE.giftTargetId=null; renderModal();">${p.authorAvatar || '👤'}</div>
                 <div class="flex-1 min-w-0">
                     <div class="flex items-baseline gap-2 mb-1 flex-wrap">
-                        <span class="font-black text-white hover:underline cursor-pointer text-sm md:text-base" onclick="STATE.viewingProfileId='${p.authorId}'; STATE.giftTargetId=null; renderModal();">${p.authorName}</span>
-                        ${isBot ? `<span class="bg-purple-500/20 text-purple-400 border border-purple-500/30 text-[8px] px-1.5 py-0.5 rounded uppercase font-bold tracking-widest">${p.authorId==='SYSTEM_MM'?'News':'Bot'}</span>` : ''}
+                        <span class="font-black text-white hover:underline cursor-pointer text-sm md:text-base flex items-center gap-1" onclick="STATE.viewingProfileId='${p.authorId}'; STATE.giftTargetId=null; renderModal();">${p.authorName} <span class="text-blue-400 text-xs">✅</span></span>
+                        ${isBot && !p.authorId.startsWith('SYSTEM_') ? `<span class="bg-purple-500/20 text-purple-400 border border-purple-500/30 text-[8px] px-1.5 py-0.5 rounded uppercase font-bold tracking-widest">Bot</span>` : ''}
                         <span class="text-slate-500 text-[10px] font-mono">• ${followers} seguidores</span>
                     </div>
                     <div class="text-slate-300 text-xs md:text-sm leading-relaxed whitespace-pre-wrap break-words">${formattedText}</div>
@@ -1458,7 +1643,7 @@ function RenderMarketSkeleton() {
     return `
     <div class="space-y-6 animate-fade-in max-w-7xl mx-auto">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <h1 class="text-2xl md:text-3xl font-black text-white tracking-tight">Mercado en Vivo</h1>
+            <h1 class="text-2xl md:text-3xl font-black text-white tracking-tight flex items-center gap-2">${Icons.Chart} Mercado en Vivo</h1>
             <div class="flex flex-col sm:flex-row w-full md:w-auto gap-2 md:gap-3">
                 <select id="market-filter" onchange="STATE.marketFilter=this.value; requestUIRender();" class="w-full sm:w-auto bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-[10px] md:text-sm font-bold text-white focus:border-emerald-500 outline-none cursor-pointer">
                     <option value="all" ${STATE.marketFilter === 'all' ? 'selected' : ''}>Todos</option>
@@ -1472,7 +1657,7 @@ function RenderMarketSkeleton() {
                 <button onclick="switchTab('launch');" class="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 whitespace-nowrap shadow-[0_0_20px_rgba(16,185,129,0.2)] transition-all text-xs">${Icons.Rocket} <span>Crear Token</span></button>
             </div>
         </div>
-        <div id="market-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5"></div>
+        <div id="market-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5 pb-10"></div>
     </div>`;
 }
 
@@ -1499,7 +1684,7 @@ function UpdateMarketDynamic() {
         const isComplete = progress >= 100;
         const currentPrice = getPrice(token.solPool, token.tokenPool);
         const mcap = currentPrice * token.initialSupply;
-        const isCex = token.milestones?.mCEX;
+        const exch = token.exchange || 'Pump.fun';
 
         const imgHTML = token.image && token.image.startsWith('data:image') || (token.image && token.image.startsWith('http')) 
           ? `<img src="${token.image}" class="w-10 h-10 md:w-12 md:h-12 rounded-lg object-cover border border-slate-700 shrink-0" onerror="this.outerHTML='<div class=\\'w-10 h-10 md:w-12 md:h-12 bg-slate-800 rounded-lg flex items-center justify-center border border-slate-700\\'>🪙</div>'"/>` 
@@ -1507,19 +1692,19 @@ function UpdateMarketDynamic() {
 
         return `
         <div onclick="selectToken('${token.id}');" class="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-4 md:p-5 cursor-pointer transition-all hover:-translate-y-1 relative overflow-hidden group shadow-lg flex flex-col justify-between min-h-[140px] md:min-h-[170px]">
-            <div class="absolute bottom-0 left-0 h-1.5 bg-slate-950 w-full"><div class="h-full ${isCex ? 'bg-yellow-400' : isComplete ? 'bg-purple-500' : 'bg-gradient-to-r from-emerald-600 to-emerald-400'} transition-all" style="width: ${progress}%"></div></div>
+            <div class="absolute bottom-0 left-0 h-1.5 bg-slate-950 w-full"><div class="h-full ${exch !== 'Pump.fun' ? 'bg-yellow-400' : isComplete ? 'bg-purple-500' : 'bg-gradient-to-r from-emerald-600 to-emerald-400'} transition-all" style="width: ${progress}%"></div></div>
             
             <div class="flex justify-between items-start mb-3 md:mb-4 z-10 gap-2 md:gap-3">
                 <div class="relative">
                     ${imgHTML}
-                    ${isCex ? `<div class="absolute -top-2 -right-2 bg-yellow-400 text-black text-[8px] font-black px-1.5 py-0.5 rounded shadow-lg border border-yellow-600">CEX</div>` : ''}
+                    ${exch !== 'Pump.fun' ? `<div class="absolute -top-2 -right-2 bg-yellow-400 text-black text-[7px] font-black px-1 py-0.5 rounded shadow-lg border border-yellow-600">${exch}</div>` : ''}
                 </div>
                 <div class="flex-1 min-w-0 pr-1 md:pr-2">
                     <h3 class="font-black text-white text-sm md:text-base truncate leading-tight mb-1">${token.name}</h3>
                     <span class="text-[9px] md:text-[10px] font-mono bg-slate-950 text-slate-400 px-1.5 py-0.5 rounded border border-slate-800 font-bold truncate block w-fit max-w-full">$${token.ticker}</span>
                 </div>
                 <div class="text-right shrink-0">
-                    <div class="text-[10px] md:text-sm font-mono font-bold ${isCex ? 'text-yellow-400 animate-pulse' : isComplete ? 'text-purple-400 animate-pulse' : 'text-emerald-400'}">$${currentPrice.toFixed(8)}</div>
+                    <div class="text-[10px] md:text-sm font-mono font-bold ${exch !== 'Pump.fun' ? 'text-yellow-400 animate-pulse' : isComplete ? 'text-purple-400 animate-pulse' : 'text-emerald-400'}">$${currentPrice.toFixed(8)}</div>
                     <div class="text-[8px] md:text-[10px] text-slate-500 font-bold uppercase mt-1">MCap: ${formatUSD(mcap)}</div>
                 </div>
             </div>
@@ -1527,6 +1712,177 @@ function UpdateMarketDynamic() {
         </div>`;
     }).join('');
 }
+
+
+// --- EXCHANGES TAB ---
+function RenderExchangesSkeleton() {
+    return `
+    <div class="space-y-6 animate-fade-in max-w-7xl mx-auto pb-10">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <h1 class="text-2xl md:text-3xl font-black text-white tracking-tight flex items-center gap-2">${Icons.Building} Exchanges & Listings</h1>
+            <select id="exch-filter" onchange="STATE.exchangeFilter=this.value; requestUIRender();" class="w-full sm:w-auto bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-[10px] md:text-sm font-bold text-white focus:border-emerald-500 outline-none cursor-pointer">
+                <option value="all" ${STATE.exchangeFilter === 'all' ? 'selected' : ''}>Todos los Listings</option>
+                <option value="CoinMarketCap" ${STATE.exchangeFilter === 'CoinMarketCap' ? 'selected' : ''}>CoinMarketCap</option>
+                <option value="KuCoin" ${STATE.exchangeFilter === 'KuCoin' ? 'selected' : ''}>KuCoin</option>
+                <option value="Binance" ${STATE.exchangeFilter === 'Binance' ? 'selected' : ''}>Binance</option>
+            </select>
+        </div>
+        <p class="text-slate-400 text-sm">Explora las monedas listadas en plataformas mayores. Los listados generan fees (2% por trade) para el dev.</p>
+        <div id="exchanges-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5"></div>
+    </div>`;
+}
+
+function UpdateExchangesDynamic() {
+    const grid = document.getElementById('exchanges-grid');
+    if(!grid) return;
+    
+    const filtered = Object.values(STATE.tokens)
+        .filter(t => t.exchange !== 'Pump.fun' && t.exchange !== 'Raydium')
+        .filter(t => STATE.exchangeFilter === 'all' || t.exchange === STATE.exchangeFilter)
+        .sort((a,b) => b.solPool - a.solPool);
+
+    if(filtered.length === 0) {
+        grid.innerHTML = `<div class="col-span-full py-16 flex flex-col items-center justify-center text-slate-500 border border-slate-800 rounded-3xl border-dashed bg-slate-900/30"><div class="text-4xl md:text-5xl mb-4 opacity-30">${Icons.Building}</div><div class="font-bold text-sm md:text-lg text-white">No hay monedas listadas aquí.</div></div>`;
+        return;
+    }
+
+    grid.innerHTML = filtered.map(token => {
+        const currentPrice = getPrice(token.solPool, token.tokenPool);
+        const mcap = currentPrice * token.initialSupply;
+        const imgHTML = token.image && token.image.startsWith('data:image') || (token.image && token.image.startsWith('http')) 
+          ? `<img src="${token.image}" class="w-12 h-12 rounded-lg object-cover border border-slate-700 shrink-0" onerror="this.outerHTML='<div class=\\'w-12 h-12 bg-slate-800 rounded-lg flex items-center justify-center border border-slate-700\\'>🪙</div>'"/>` 
+          : `<div class="w-12 h-12 bg-slate-800 rounded-lg flex items-center justify-center border border-slate-700 text-2xl shrink-0">🪙</div>`;
+
+        return `
+        <div onclick="selectToken('${token.id}');" class="bg-slate-900 border border-slate-800 hover:border-yellow-500/50 rounded-2xl p-5 cursor-pointer transition-all hover:-translate-y-1 relative overflow-hidden group shadow-lg flex flex-col">
+            <div class="flex justify-between items-start mb-4">
+                ${imgHTML}
+                <div class="text-right">
+                    <span class="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 text-[10px] px-2 py-1 rounded-md font-black uppercase tracking-widest">${token.exchange}</span>
+                </div>
+            </div>
+            <h3 class="font-black text-white text-lg truncate">${token.name}</h3>
+            <span class="text-xs font-mono text-slate-400 mb-3 block">$${token.ticker}</span>
+            <div class="mt-auto bg-slate-950 p-3 rounded-xl border border-slate-800 flex justify-between items-center">
+                <div class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">MCap</div>
+                <div class="font-mono font-bold text-emerald-400">${formatUSD(mcap)}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+
+// --- RACING TAB ---
+function RenderRacing() {
+    const me = STATE.players[STATE.myProfile.id];
+    const hasCar = me.luxuries && me.luxuries.some(l => l.includes('🚗') || l.includes('🏎️') || l.includes('🚙'));
+    
+    return `
+    <div class="space-y-6 animate-fade-in max-w-5xl mx-auto pb-10">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="text-4xl">🏁</div>
+            <div>
+                <h1 class="text-2xl md:text-3xl font-black text-white tracking-tight">Carreras Clandestinas</h1>
+                <p class="text-slate-400 text-xs md:text-sm">Apuesta contra otros humanos reales. Tuning vs Suerte.</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Garage -->
+            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl flex flex-col">
+                <h2 class="text-lg font-black text-white mb-4 uppercase tracking-widest flex items-center gap-2">🛠️ Mi Garaje</h2>
+                ${hasCar ? `
+                <div class="flex-1 flex flex-col gap-4">
+                    <div class="bg-slate-950 rounded-2xl border border-slate-800 p-6 flex items-center justify-center text-7xl shadow-inner">
+                        ${me.luxuries.find(l => l.includes('🚗') || l.includes('🏎️') || l.includes('🚙'))}
+                    </div>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800">
+                            <div>
+                                <div class="text-[10px] text-slate-500 font-bold uppercase">Motor (Velocidad)</div>
+                                <div class="font-black text-white text-lg">Nvl. ${me.carTuning?.speedLevel || 1}</div>
+                            </div>
+                            <button onclick="dispatchAction('ACTION_TUNE_CAR', {type: 'speed'});" class="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-emerald-500/30">Upgrade $20</button>
+                        </div>
+                        <div class="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800">
+                            <div>
+                                <div class="text-[10px] text-slate-500 font-bold uppercase">Llantas (Aceleración)</div>
+                                <div class="font-black text-white text-lg">Nvl. ${me.carTuning?.accelLevel || 1}</div>
+                            </div>
+                            <button onclick="dispatchAction('ACTION_TUNE_CAR', {type: 'accel'});" class="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-emerald-500/30">Upgrade $20</button>
+                        </div>
+                    </div>
+                    <div class="mt-auto pt-4 border-t border-slate-800">
+                        <input id="race-bet" type="number" placeholder="Apuesta (USD)" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-emerald-400 font-mono text-center mb-3 focus:border-emerald-500 outline-none" />
+                        <button onclick="const b=parseFloat(document.getElementById('race-bet').value); if(b>0) dispatchAction('ACTION_CREATE_RACE', {bet: b});" class="w-full bg-red-600 hover:bg-red-500 text-white font-black py-3 rounded-xl uppercase tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.3)] transition-all">Crear Carrera</button>
+                    </div>
+                </div>
+                ` : `
+                <div class="flex-1 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/50">
+                    <div class="text-5xl mb-4 opacity-50">🚶</div>
+                    <div class="text-sm font-bold text-slate-400 mb-4">No tienes vehículo. Necesitas comprar uno en la tienda de Lujos.</div>
+                    <button onclick="switchTab('shop');" class="bg-emerald-500 text-slate-950 px-4 py-2 rounded-xl font-bold">Ir a la Tienda</button>
+                </div>
+                `}
+            </div>
+
+            <!-- Active Races -->
+            <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl flex flex-col">
+                <h2 class="text-lg font-black text-white mb-4 uppercase tracking-widest flex items-center gap-2">🚦 Pistas Activas</h2>
+                <div id="races-grid" class="flex-1 overflow-y-auto space-y-3 min-h-[300px] pr-2"></div>
+            </div>
+        </div>
+    </div>`;
+}
+
+function UpdateRacingDynamic() {
+    const grid = document.getElementById('races-grid');
+    if(!grid) return;
+    
+    const racesList = Object.values(STATE.races || {});
+    const me = STATE.players[STATE.myProfile.id];
+    const hasCar = me.luxuries && me.luxuries.some(l => l.includes('🚗') || l.includes('🏎️') || l.includes('🚙'));
+
+    if(racesList.length === 0) {
+        grid.innerHTML = `<div class="h-full flex items-center justify-center text-slate-500 font-bold italic py-10">No hay carreras activas. Crea una.</div>`;
+        return;
+    }
+
+    grid.innerHTML = racesList.map(r => {
+        const amIn = r.participants.find(p => p.id === me.id);
+        const pot = r.bet * r.participants.length;
+        
+        let statusHtml = '';
+        if(r.state === 'waiting') {
+            if(r.hostId === me.id) statusHtml = `<button onclick="dispatchAction('ACTION_START_RACE', {raceId: '${r.id}'})" class="bg-emerald-500 text-slate-950 px-4 py-2 rounded-xl font-black uppercase tracking-wider hover:bg-emerald-400 transition-colors">Start</button>`;
+            else if(!amIn && hasCar) statusHtml = `<button onclick="dispatchAction('ACTION_JOIN_RACE', {raceId: '${r.id}'})" class="bg-blue-600 text-white px-4 py-2 rounded-xl font-black uppercase tracking-wider hover:bg-blue-500 transition-colors">Unirse (${formatUSD(r.bet)})</button>`;
+            else if(!hasCar) statusHtml = `<span class="text-[10px] text-slate-500 uppercase font-bold">Necesitas Auto</span>`;
+            else statusHtml = `<span class="text-xs text-yellow-500 font-bold animate-pulse">Esperando Host...</span>`;
+        } else if (r.state === 'racing') {
+            statusHtml = `<span class="text-red-500 font-black uppercase tracking-widest animate-pulse flex items-center gap-2">🚗💨 Corriendo...</span>`;
+        } else {
+            const winner = STATE.players[r.winner];
+            statusHtml = `<span class="text-emerald-400 font-black text-sm border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 rounded-lg">🏆 Ganó ${winner?.name || 'Alguien'}</span>`;
+        }
+
+        return `
+        <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-inner">
+            <div class="flex-1 min-w-0 w-full">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Host: ${r.hostName}</span>
+                    <span class="text-xs font-mono font-black text-emerald-400">Pozo: ${formatUSD(pot)}</span>
+                </div>
+                <div class="flex items-center gap-2 overflow-x-auto hide-scrollbar pb-1">
+                    ${r.participants.map(p => `<div class="relative shrink-0"><div class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-lg border border-slate-700" title="${p.name} (Tuning: ${p.tuning?.speedLevel||1})">${p.avatar}</div></div>`).join('')}
+                </div>
+            </div>
+            <div class="shrink-0 w-full md:w-auto flex justify-end">
+                ${statusHtml}
+            </div>
+        </div>`;
+    }).join('');
+}
+
 
 function RenderTokenDetailSkeleton() {
     const token = STATE.tokens[STATE.selectedTokenId];
@@ -1536,6 +1892,8 @@ function RenderTokenDetailSkeleton() {
     const imgHTML = token.image && token.image.startsWith('data:image') || (token.image && token.image.startsWith('http')) 
       ? `<img src="${token.image}" class="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-xl object-cover border border-slate-700 shadow-lg shrink-0" onerror="this.outerHTML='<div class=\\'w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 bg-slate-800 rounded-xl flex items-center justify-center border border-slate-700 text-2xl shadow-lg shrink-0\\'>🪙</div>'"/>` 
       : `<div class="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 bg-slate-800 rounded-xl flex items-center justify-center border border-slate-700 text-2xl shadow-lg shrink-0">🪙</div>`;
+
+    const exch = token.exchange || 'Pump.fun';
 
     return `
     <div class="space-y-4 max-w-7xl mx-auto h-full flex flex-col animate-fade-in">
@@ -1550,7 +1908,7 @@ function RenderTokenDetailSkeleton() {
                     <div class="flex gap-3 items-center w-full sm:w-auto">
                         <div class="relative">
                             ${imgHTML}
-                            <div id="tok-cex-badge" class="absolute -top-3 -right-3 bg-yellow-400 text-black text-[9px] font-black px-2 py-1 rounded shadow-lg border border-yellow-600 hidden animate-bounce">CEX LISTED</div>
+                            <div id="tok-cex-badge" class="absolute -top-3 -right-3 ${exch!=='Pump.fun'?'bg-yellow-400 text-black':'hidden'} text-[9px] font-black px-2 py-1 rounded shadow-lg border border-yellow-600 animate-bounce">${exch}</div>
                         </div>
                         <div class="flex-1 min-w-0 pr-2">
                             <h1 class="text-xl sm:text-2xl md:text-4xl font-black text-white tracking-tight mb-1 truncate">${token.name} <span class="text-emerald-400 text-sm md:text-xl bg-emerald-500/10 px-2 py-0.5 rounded-xl ml-1 font-mono border border-emerald-500/20">$${token.ticker}</span></h1>
@@ -1612,6 +1970,7 @@ function RenderTokenDetailSkeleton() {
 
                     <div class="bg-slate-950 border border-slate-800 p-3 md:p-5 rounded-2xl mb-4 space-y-2 md:space-y-3 text-[10px] md:text-sm shadow-inner">
                         <div class="flex justify-between text-slate-400 font-bold uppercase tracking-wider"><span>Recibes est:</span> <span id="tok-est-rec" class="font-mono text-white text-xs md:text-base">...</span></div>
+                        <div class="flex justify-between text-slate-500 font-bold uppercase tracking-wider"><span>Fee Dev (2%):</span> <span id="tok-fee-est" class="font-mono text-white text-xs">...</span></div>
                         <div class="h-px bg-slate-800 w-full"></div>
                         <div class="flex justify-between text-slate-500 font-bold uppercase tracking-wider"><span>Liquidez Real:</span> <span id="tok-real-liq" class="font-mono text-xs">...</span></div>
                     </div>
@@ -1620,12 +1979,12 @@ function RenderTokenDetailSkeleton() {
                         ${STATE.tradeType==='buy' ? 'Ape In' : 'Dump'}
                     </button>
 
-                    <div class="mt-4 flex flex-col sm:flex-row lg:flex-col xl:flex-row gap-2" id="tok-tools">
+                    <div class="mt-4 flex flex-col gap-2" id="tok-tools">
                         <!-- Tools -->
                     </div>
                 </div>
 
-                <div class="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden flex-1 flex flex-col min-h-[150px] md:min-h-[250px] shadow-xl shrink-0">
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden flex-1 flex flex-col min-h-[150px] md:min-h-[250px] shadow-xl shrink-0 mt-4 md:mt-0">
                     <div class="p-3 border-b border-slate-800 bg-slate-950 text-[9px] md:text-[10px] font-black text-slate-500 uppercase flex justify-between tracking-widest">
                         <span class="flex items-center gap-2">${Icons.PieChart} Holder</span><span>% Supply</span>
                     </div>
@@ -1645,17 +2004,25 @@ function UpdateTokenDetailDynamic() {
     const currentPrice = getPrice(token.solPool, token.tokenPool);
     const mcap = currentPrice * token.initialSupply; 
     const balTokens = me.portfolio[token.id] || 0;
-    const isCex = token.milestones?.mCEX;
+    const isCex = token.exchange !== 'Pump.fun' && token.exchange !== 'Raydium';
     
     const numAmt = parseFloat(document.getElementById('t-amount')?.value || STATE.tradeAmount) || 0;
     let estimated = 0;
-    if(STATE.tradeType === 'buy' && numAmt > 0) estimated = calcTokensOut(numAmt, token.solPool, token.tokenPool);
-    if(STATE.tradeType === 'sell' && numAmt > 0) estimated = calcSolOut(numAmt, token.solPool, token.tokenPool);
+    let feeEst = 0;
+    if(STATE.tradeType === 'buy' && numAmt > 0) {
+        feeEst = numAmt * 0.02;
+        estimated = calcTokensOut(numAmt - feeEst, token.solPool, token.tokenPool);
+    }
+    if(STATE.tradeType === 'sell' && numAmt > 0) {
+        const solVal = calcSolOut(numAmt, token.solPool, token.tokenPool);
+        feeEst = solVal * 0.02;
+        estimated = solVal - feeEst;
+    }
 
     const progress = Math.min(100, ((token.solPool - VIRTUAL_USD_RESERVE) / BONDING_CURVE_LIMIT) * 100);
     const isComplete = progress >= 100;
 
-    const dCex = document.getElementById('tok-cex-badge'); if(dCex) { if(isCex) dCex.classList.remove('hidden'); else dCex.classList.add('hidden'); }
+    const dCex = document.getElementById('tok-cex-badge'); if(dCex) { if(isCex) { dCex.classList.remove('hidden'); dCex.innerText = token.exchange; } else dCex.classList.add('hidden'); }
     const dRep = document.getElementById('tok-dev-rep'); if(dRep) { dRep.innerText = STATE.players[token.creatorId]?.reputation || 1; dRep.className = (STATE.players[token.creatorId]?.reputation || 1) > 70 ? 'text-emerald-400' : 'text-slate-300'; }
     const prEl = document.getElementById('tok-price'); if(prEl) { prEl.innerHTML = '$' + currentPrice.toFixed(8); prEl.className = `text-base sm:text-xl md:text-3xl font-mono font-black ${isCex ? 'text-yellow-400' : isComplete ? 'text-purple-400' : 'text-emerald-400'}`; }
     const mcEl = document.getElementById('tok-mcap'); if(mcEl) mcEl.innerText = formatUSD(mcap);
@@ -1684,6 +2051,7 @@ function UpdateTokenDetailDynamic() {
     
     const tBal = document.getElementById('tok-bal-base'); if(tBal) tBal.innerText = STATE.tradeType==='buy'?formatUSD(me.solBalance):formatToken(balTokens);
     const eRec = document.getElementById('tok-est-rec'); if(eRec) eRec.innerText = STATE.tradeType==='buy'?formatToken(estimated):formatUSD(estimated);
+    const eFee = document.getElementById('tok-fee-est'); if(eFee) eFee.innerText = STATE.tradeType==='buy'?formatUSD(feeEst):formatUSD(feeEst);
     const rLiq = document.getElementById('tok-real-liq'); if(rLiq) rLiq.innerText = formatUSD(token.solPool - VIRTUAL_USD_RESERVE);
 
     const pctBtns = document.getElementById('tok-pct-btns');
@@ -1697,15 +2065,41 @@ function UpdateTokenDetailDynamic() {
 
     const tools = document.getElementById('tok-tools');
     if(tools) {
-        tools.innerHTML = `
-            <button onclick="const b = prompt('¿Quemar tokens? Se restarán de tu inventario y del Supply Total para subir el precio base.'); if(b && Number(b)>0){ dispatchAction('ACTION_BURN', { tokenId: '${token.id}', amount: Number(b) }); }" ${balTokens <= 0 ? 'disabled' : ''} class="flex-1 bg-orange-500/10 text-orange-500 border border-orange-500/30 hover:bg-orange-500/20 rounded-xl py-2 md:py-3 text-[9px] md:text-[10px] font-black flex justify-center items-center gap-1.5 transition-all disabled:opacity-30 disabled:cursor-not-allowed uppercase tracking-widest">
+        let toolsHTML = `
+            <button onclick="const b = prompt('¿Quemar tokens? Se restarán de tu inventario y del Supply Total para subir el precio base.'); if(b && Number(b)>0){ dispatchAction('ACTION_BURN', { tokenId: '${token.id}', amount: Number(b) }); }" ${balTokens <= 0 ? 'disabled' : ''} class="w-full bg-orange-500/10 text-orange-500 border border-orange-500/30 hover:bg-orange-500/20 rounded-xl py-2 md:py-3 text-[9px] md:text-[10px] font-black flex justify-center items-center gap-1.5 transition-all disabled:opacity-30 disabled:cursor-not-allowed uppercase tracking-widest">
                 ${Icons.Flame} Quemar
             </button>
-            ${token.creatorId === me.id ? `
-            <button onclick="if(window.confirm('RUG PULL: ¿Vender 100% de tu inventario de golpe? Perderás reputación drásticamente.')){ dispatchAction('ACTION_TRADE', { tokenId: '${token.id}', isBuy: false, amount: ${balTokens} }); }" class="flex-1 bg-red-950/40 text-red-500 border border-red-900/50 hover:bg-red-900/60 rounded-xl py-2 md:py-3 text-[9px] md:text-[10px] font-black flex justify-center items-center gap-1.5 transition-all uppercase tracking-widest">
-                ${Icons.Alert} Rug Pull
-            </button>` : ''}
         `;
+        
+        if(token.creatorId === me.id) {
+            toolsHTML += `
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 mt-2">
+                <div class="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-2 flex justify-between">
+                    <span>Panel de Dev</span>
+                    <span class="text-emerald-400">Fees: ${formatUSD(token.accumulatedFees || 0)}</span>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="dispatchAction('ACTION_CLAIM_FEES', { tokenId: '${token.id}' });" class="flex-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-wider">
+                        Reclamar Fees
+                    </button>
+                </div>
+                ${token.exchange === 'Pump.fun' || token.exchange === 'Raydium' ? `
+                <button onclick="if(window.confirm('Listar en CoinMarketCap cuesta $100 y aumenta el hype. ¿Continuar?')) dispatchAction('ACTION_UPGRADE_EXCHANGE', { tokenId: '${token.id}', exchange: 'CoinMarketCap' });" class="w-full mt-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-wider">
+                    Listar en CMC ($100)
+                </button>
+                ` : ''}
+                ${token.exchange === 'CoinMarketCap' ? `
+                <button onclick="if(window.confirm('Listar en Binance cuesta $5000. ¿Continuar?')) dispatchAction('ACTION_UPGRADE_EXCHANGE', { tokenId: '${token.id}', exchange: 'Binance' });" class="w-full mt-2 bg-yellow-500/20 text-yellow-500 border border-yellow-500/30 hover:bg-yellow-500/30 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-wider">
+                    Listar en Binance ($5000)
+                </button>
+                ` : ''}
+                <button onclick="if(window.confirm('RUG PULL: ¿Vender 100% de tu inventario de golpe? Perderás reputación drásticamente.')){ dispatchAction('ACTION_TRADE', { tokenId: '${token.id}', isBuy: false, amount: ${balTokens} }); }" class="w-full mt-2 bg-red-950/40 text-red-500 border border-red-900/50 hover:bg-red-900/60 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-widest">
+                    ${Icons.Alert} Rug Pull
+                </button>
+            </div>
+            `;
+        }
+        tools.innerHTML = toolsHTML;
     }
 
     const holders = Object.values(STATE.players).filter(p => p.portfolio[token.id] > 0)
@@ -1722,7 +2116,7 @@ function UpdateTokenDetailDynamic() {
                     <div class="relative"><span class="text-xl md:text-2xl">${h.avatar}</span></div>
                     <div class="flex flex-col min-w-0">
                         <span class="text-[10px] md:text-xs font-bold text-slate-200 truncate max-w-[80px] md:max-w-[100px]">${h.name}</span>
-                        ${h.isBot ? `<span class="text-[8px] text-purple-400 font-mono font-bold uppercase mt-0.5 tracking-wider truncate">${h.id==='SYSTEM_MM'?'MarketMaker':'BOT'}</span>` : ''}
+                        ${h.isBot ? `<span class="text-[8px] text-purple-400 font-mono font-bold uppercase mt-0.5 tracking-wider truncate">${h.id.startsWith('SYSTEM_')?'SYS':'BOT'}</span>` : ''}
                     </div>
                 </div>
                 <div class="text-right shrink-0">
@@ -1735,7 +2129,7 @@ function UpdateTokenDetailDynamic() {
 // --- LEADERBOARD ---
 function RenderLeaderboardSkeleton() {
     return `
-    <div class="max-w-6xl mx-auto space-y-4 md:space-y-6 animate-fade-in">
+    <div class="max-w-6xl mx-auto space-y-4 md:space-y-6 animate-fade-in pb-10">
         <div class="flex justify-between items-start md:items-end flex-col md:flex-row gap-3">
             <div>
                 <h2 class="text-2xl md:text-3xl font-black text-white tracking-tight">Top Degens</h2>
@@ -1753,7 +2147,6 @@ function RenderLeaderboardSkeleton() {
                     <option value="followers" ${STATE.lbSort==='followers'?'selected':''}>📢 Seguidores</option>
                     <option value="reputation" ${STATE.lbSort==='reputation'?'selected':''}>🛡️ Reputación</option>
                 </select>
-                ${STATE.roomConfig.isHost ? `<button onclick="const amt = parseInt(prompt('¿Cuántos bots quieres añadir a la partida?', '100')); if(!isNaN(amt) && amt>0) dispatchAction('ACTION_ADD_BOT', {amount: amt});" class="w-full sm:w-auto bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 text-[10px] px-3 py-2 rounded-lg font-black transition-colors">+ Añadir Bots</button>` : ''}
             </div>
         </div>
         <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl" id="lb-grid"></div>
@@ -1764,7 +2157,7 @@ function UpdateLeaderboardDynamic() {
     const grid = document.getElementById('lb-grid');
     if(!grid) return;
     
-    let filtered = Object.values(STATE.players).filter(p => p.id !== 'SYSTEM_MM');
+    let filtered = Object.values(STATE.players).filter(p => !p.id.startsWith('SYSTEM_'));
     if(STATE.lbFilter === 'bots') filtered = filtered.filter(p => p.isBot);
     else if(STATE.lbFilter === 'humans') filtered = filtered.filter(p => !p.isBot);
 
@@ -1789,7 +2182,7 @@ function UpdateLeaderboardDynamic() {
                         <td class="px-4 py-4 font-bold text-white flex items-center gap-3 cursor-pointer" onclick="STATE.viewingProfileId='${p.id}'; STATE.giftTargetId=null; renderModal();">
                             <div class="relative"><span class="text-3xl">${p.avatar}</span></div>
                             <div class="min-w-0">
-                                <span class="hover:underline truncate block max-w-[150px]">${p.name}</span> 
+                                <span class="hover:underline truncate block max-w-[150px]">${p.name} ${p.isVerified?'<span class="text-blue-400">✅</span>':''}</span> 
                                 ${p.id===STATE.myProfile.id ? '<span class="text-[9px] text-emerald-400 bg-emerald-500/10 px-1 py-0.5 rounded uppercase tracking-wider">(Tú)</span>' : ''}
                                 <div class="text-[9px] ${r.color} font-bold mt-0.5 uppercase tracking-wider">${r.emoji} ${r.name}</div>
                             </div>
@@ -1816,7 +2209,7 @@ function UpdateLeaderboardDynamic() {
                         <span class="text-slate-500 font-mono text-[10px]">#${i+1}</span>
                         <div class="relative shrink-0"><span class="text-2xl">${p.avatar}</span></div>
                         <div class="flex flex-col min-w-0">
-                            <span class="text-sm truncate">${p.name}</span>
+                            <span class="text-sm truncate">${p.name} ${p.isVerified?'<span class="text-blue-400">✅</span>':''}</span>
                             <span class="text-[8px] ${r.color} uppercase tracking-wider font-bold">${r.emoji} ${r.name}</span>
                         </div>
                     </div>
@@ -1879,50 +2272,17 @@ function RenderBank() {
     </div>`;
 }
 
-// --- STREAMS ---
-function RenderStreamsSkeleton() {
-    return `
-    <div class="max-w-6xl mx-auto space-y-4 md:space-y-6 animate-fade-in pb-10">
-        <h2 class="text-2xl md:text-3xl font-black text-white mb-1 md:mb-2">Streams en Vivo</h2>
-        <p class="text-slate-500 text-xs md:text-sm mb-4 md:mb-6">Apoya a tus traders favoritos con donaciones (Text To Speech simulado).</p>
-        <div id="streams-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6"></div>
-    </div>`;
-}
-
-function UpdateStreamsDynamic() {
-    const grid = document.getElementById('streams-grid');
-    if(!grid || grid.innerHTML.trim() !== '') return;
-
-    const streamers = Object.values(STATE.players).filter(p => p.isBot && p.reputation > 5 && p.id !== 'SYSTEM_MM').sort(()=>0.5-Math.random()).slice(0,4);
-    
-    grid.innerHTML = streamers.length === 0 ? '<div class="col-span-full text-slate-500 italic py-10 text-center">Nadie está streameando ahora mismo.</div>' : 
-        streamers.map(s => `
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg group flex flex-col">
-            <div class="h-32 md:h-48 bg-slate-950 relative flex items-center justify-center border-b border-slate-800">
-                <div class="absolute top-2 left-2 bg-red-500 text-white text-[8px] md:text-[10px] font-black px-1.5 py-0.5 rounded uppercase tracking-widest animate-pulse">EN VIVO</div>
-                <div class="absolute top-2 right-2 bg-slate-900/80 text-white text-[8px] md:text-[10px] font-mono px-1.5 py-0.5 rounded border border-slate-700">👁️ ${Math.floor(Math.random()*5000 + 100)} views</div>
-                <div class="text-5xl md:text-7xl group-hover:scale-110 transition-transform">${s.avatar}</div>
-            </div>
-            <div class="p-4 md:p-5 flex flex-col xl:flex-row gap-3 justify-between items-start xl:items-center bg-slate-900">
-                <div class="min-w-0">
-                    <div class="font-black text-white text-sm md:text-lg flex items-center gap-2 truncate">${s.name} <span class="text-[8px] md:text-xs bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded font-mono uppercase tracking-widest">Bot</span></div>
-                    <div class="text-[10px] md:text-xs text-slate-500 mt-1 truncate">Haciendo trading e ignorando rugs.</div>
-                </div>
-                <button onclick="dispatchAction('ACTION_CHAT', {msg: 'Enviando TTS a ${s.name}: LFG bro!'}); addToast('TTS Donado a ${s.name}','💸');" class="w-full xl:w-auto bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/40 px-3 py-2 md:py-3 rounded-lg text-[10px] md:text-xs font-bold transition-colors uppercase tracking-wider text-center shrink-0">Donar TTS</button>
-            </div>
-        </div>`).join('');
-}
-
 function RenderShop() {
     const me = STATE.players[STATE.myProfile.id];
     let html = `<div class="max-w-6xl mx-auto animate-fade-in pb-10">
         <h2 class="text-2xl md:text-3xl font-black text-white mb-1 md:mb-2 tracking-tight">Tienda Degen</h2>
-        <p class="text-slate-500 text-xs md:text-sm mb-6 md:mb-8">Sube tu reputación y gana influencia (seguidores) comprando lujos.</p>`;
+        <p class="text-slate-500 text-xs md:text-sm mb-6 md:mb-8">Sube tu reputación, obtén fans, autos para correr o la ansiada Verificación.</p>`;
         
     for(const cat in SHOP_CATEGORIES) {
         html += `<h3 class="text-sm md:text-lg font-black text-slate-400 uppercase tracking-widest mb-3 md:mb-4 mt-6 md:mt-8">${cat}</h3>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">`;
         SHOP_CATEGORIES[cat].forEach(item => {
+            const isOwned = item.isVerified && me.isVerified;
             html += `
             <div class="bg-slate-900 border border-slate-800 rounded-2xl md:rounded-3xl p-4 md:p-6 text-center hover:border-emerald-500/50 hover:shadow-[0_0_30px_rgba(16,185,129,0.1)] transition-all flex flex-col group">
                 <div class="text-4xl md:text-6xl mb-3 md:mb-5 group-hover:scale-110 transition-transform">${item.icon}</div>
@@ -1932,7 +2292,7 @@ function RenderShop() {
                     <span class="flex items-center gap-1"><span class="text-slate-600">${Icons.Shield}</span> +${item.rep} Rep</span>
                     <span class="flex items-center gap-1 text-blue-400"><span class="text-slate-600">${Icons.Users}</span> +${item.rep*10} Fans</span>
                 </div>
-                <button onclick="dispatchAction('ACTION_BUY_LUXURY', {itemId: '${item.id}'}); switchTab('shop');" class="mt-auto w-full py-2.5 md:py-3.5 rounded-xl font-black text-[10px] md:text-sm uppercase tracking-wider transition-all ${me.solBalance < item.price ? 'opacity-50 cursor-not-allowed bg-slate-950 text-slate-600 border border-slate-800' : 'bg-white text-slate-950 hover:bg-slate-200 hover:shadow-lg'}">Comprar</button>
+                <button onclick="dispatchAction('ACTION_BUY_LUXURY', {itemId: '${item.id}'}); switchTab('shop');" ${isOwned ? 'disabled' : ''} class="mt-auto w-full py-2.5 md:py-3.5 rounded-xl font-black text-[10px] md:text-sm uppercase tracking-wider transition-all ${(me.solBalance < item.price) || isOwned ? 'opacity-50 cursor-not-allowed bg-slate-950 text-slate-600 border border-slate-800' : 'bg-white text-slate-950 hover:bg-slate-200 hover:shadow-lg'}">${isOwned ? 'Obtenido' : 'Comprar'}</button>
             </div>`;
         });
         html += `</div>`;
@@ -1943,11 +2303,12 @@ function RenderShop() {
 
 function RenderLaunch() {
     const me = STATE.players[STATE.myProfile.id];
-    const maxDevBuy = Math.max(0, me.solBalance - 1);
+    // Cap maxDevBuy en UI a 1.5 USD para evitar que el Dev acapare supply fácilmente.
+    const maxDevBuy = Math.min(1.5, Math.max(0, me.solBalance - 1));
     return `
     <div class="max-w-lg mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-8 shadow-2xl animate-fade-in mt-4 md:mt-10">
         <h2 class="text-xl md:text-2xl font-black text-white mb-2 flex items-center gap-3">${Icons.Rocket} Desplegar Token</h2>
-        <p class="text-[10px] md:text-xs text-slate-500 mb-6 md:mb-8 font-bold uppercase tracking-wider leading-relaxed">El token inicia con curva Pump.fun. Ganas reputación por volumen y CEX listings.</p>
+        <p class="text-[10px] md:text-xs text-slate-500 mb-6 md:mb-8 font-bold uppercase tracking-wider leading-relaxed">El token inicia con curva Pump.fun. Obtendrás fees del 2% en cada trade si estás verificado o el token se lista.</p>
         <form id="launch-form" onsubmit="event.preventDefault(); const n=document.getElementById('l-name').value; const t=document.getElementById('l-ticker').value; const i=document.getElementById('l-image')?.value || STATE.launchData.image; const d=parseFloat(document.getElementById('l-devbuy').value)||0; if(n&&t){dispatchAction('ACTION_LAUNCH', {name:n, ticker:t, image:i, devBuy:d}); STATE.launchData.image=''; switchTab('market');}" class="space-y-4 md:space-y-5">
             <div>
                 <label class="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 md:mb-2 block">Nombre del Proyecto</label>
@@ -1975,6 +2336,7 @@ function RenderLaunch() {
             <div class="pt-1 md:pt-2">
                 <label class="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 md:mb-2 flex justify-between"><span>Snipe del Dev (Opcional)</span> <span class="text-emerald-400">Max: ${formatUSD(maxDevBuy)}</span></label>
                 <input id="l-devbuy" type="number" step="0.01" min="0" max="${maxDevBuy}" placeholder="USD" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 md:px-4 py-3 md:py-3.5 text-emerald-400 font-mono text-base md:text-lg focus:border-emerald-500 outline-none transition-colors" />
+                <p class="text-[8px] text-slate-600 mt-1 uppercase font-bold">Por seguridad contra Rug Pulls, el Snipe de Dev inicial está limitado.</p>
             </div>
             <div class="bg-slate-950 p-4 md:p-5 rounded-xl border border-slate-800 text-[10px] md:text-sm space-y-1.5 md:space-y-2 mt-3 md:mt-4 shadow-inner">
                 <div class="flex justify-between font-bold text-slate-400 uppercase tracking-wider"><span>Costo (Fijo):</span><span class="font-mono text-white">$1.00</span></div>
@@ -2049,11 +2411,11 @@ function renderModal() {
                 ${p.avatar}
             </div>
             <h2 class="text-xl md:text-2xl font-black text-white flex items-center justify-center gap-2 truncate px-4">
-                ${p.name} ${isMe ? '<span class="text-[10px] md:text-xs bg-emerald-500/10 text-emerald-400 px-1.5 md:px-2 py-0.5 rounded uppercase tracking-wider">Tú</span>' : ''}
+                ${p.name} ${p.isVerified?'<span class="text-blue-400">✅</span>':''} ${isMe ? '<span class="text-[10px] md:text-xs bg-emerald-500/10 text-emerald-400 px-1.5 md:px-2 py-0.5 rounded uppercase tracking-wider">Tú</span>' : ''}
             </h2>
             <div class="text-[10px] md:text-xs text-slate-500 font-mono font-bold uppercase tracking-widest mt-1.5 md:mt-2 flex flex-col gap-1 items-center">
                 <span class="text-blue-400 flex items-center gap-1"><span class="text-slate-600">${Icons.Megaphone}</span> ${(p.followers||0).toLocaleString()} Seguidores</span>
-                <span>${p.isBot ? (p.id === 'SYSTEM_MM' ? 'Market Maker Central' : `Bot IA: ${p.strategy}`) : 'Jugador Humano'}</span>
+                <span>${p.isBot ? (p.id.startsWith('SYSTEM_') ? 'Cuenta de Sistema' : `Bot IA: ${p.strategy}`) : 'Jugador Humano'}</span>
                 <span class="${r.color} bg-slate-950 px-2 md:px-3 py-1 rounded-full border border-slate-800 shadow-inner text-[9px] md:text-xs mt-1">${r.emoji} Rango: ${r.name}</span>
             </div>
         </div>
@@ -2080,7 +2442,7 @@ function renderModal() {
             ${tokensHTML || '<div class="text-xs md:text-sm text-slate-600 text-center py-4 font-bold bg-slate-950 rounded-xl border border-slate-800 border-dashed">Sin inversiones</div>'}
         </div>
 
-        ${!isMe && p.id !== 'SYSTEM_MM' ? `
+        ${!isMe && !p.id.startsWith('SYSTEM_') ? `
         <button onclick="if(STATE.trackedIds.has('${p.id}')) STATE.trackedIds.delete('${p.id}'); else STATE.trackedIds.add('${p.id}'); renderModal();" class="w-full py-3 md:py-4 rounded-xl font-black text-xs md:text-sm uppercase tracking-widest transition-all flex justify-center items-center gap-2 ${isTracked ? 'bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)]'}">
             ${isTracked ? Icons.Eye + ' Dejar de Seguir' : Icons.Check + ' Trackear Carteras'}
         </button>
