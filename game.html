@@ -114,7 +114,8 @@ const calcSolOut = (tokensIn, solPool, tokenPool) => solPool - ((solPool * token
 let STATE = {
     route: 'lobby', 
     myProfile: null,
-    roomConfig: { code: '', name: 'Sala Degen', maxPlayers: 2050, isHost: false, isOffline: false, botsEnabled: true, botCount: 200, botPostsEnabled: true },
+    // Se aumentó el límite de actores a 10,050 para permitir 10,000 bots + 50 humanos
+    roomConfig: { code: '', name: 'Sala Degen', maxPlayers: 10050, isHost: false, isOffline: false, botsEnabled: true, botCount: 200, botPostsEnabled: true },
     players: {}, // En el host: TODOS los bots. En el cliente: Solo Humanos + Top 70 Bots
     totalPlayerCount: 0, // Para mantener el contador visual exacto en los clientes
     tokens: {},
@@ -323,6 +324,9 @@ const WEBRTC_CONFIG = {
 window.adjustBots = function(targetCount) {
     if (!STATE.roomConfig.isHost) return;
     if (!STATE.roomConfig.botsEnabled) targetCount = 0;
+    
+    // Mantener la configuración sincronizada con la cantidad actual (para el autoguardado)
+    STATE.roomConfig.botCount = targetCount; 
     
     const currentBotKeys = Object.keys(STATE.players).filter(k => STATE.players[k].isBot && k !== 'SYSTEM_MM');
     if (currentBotKeys.length < targetCount) {
@@ -610,7 +614,8 @@ function processMessageAsHost(data) {
     if (type === 'ACTION_POST') handlePostHost(payload.text, senderId);
     if (type === 'ACTION_GIFT') handleGiftHost(payload.to, payload.asset, payload.amount, senderId);
     if (type === 'ACTION_BUY_LUXURY') handleBuyLuxuryHost(payload.itemId, senderId);
-    if (type === 'ACTION_ADD_BOT') { window.adjustBots(Object.keys(STATE.players).filter(k=>STATE.players[k].isBot).length + 1); }
+    // Se actualizó para aceptar cantidades personalizadas enviadas por el Host
+    if (type === 'ACTION_ADD_BOT') { window.adjustBots(Object.keys(STATE.players).filter(k=>STATE.players[k].isBot && k!=='SYSTEM_MM').length + (payload.amount || 1)); }
     if (type === 'ACTION_CHARITY') {
         const p = STATE.players[senderId];
         if(p && p.solBalance >= payload.amount && payload.amount > 0) {
@@ -1071,7 +1076,8 @@ function dispatchAction(type, payload) {
         if(type==='ACTION_POST') handlePostHost(payload.text, STATE.myProfile.id);
         if(type==='ACTION_GIFT') handleGiftHost(payload.to, payload.asset, payload.amount, STATE.myProfile.id);
         if(type==='ACTION_BUY_LUXURY') handleBuyLuxuryHost(payload.itemId, STATE.myProfile.id);
-        if(type==='ACTION_ADD_BOT') { window.adjustBots(Object.keys(STATE.players).filter(k=>STATE.players[k].isBot && k!=='SYSTEM_MM').length + 1); }
+        // Se actualizó para aceptar cantidades personalizadas enviadas por el Host
+        if(type==='ACTION_ADD_BOT') { window.adjustBots(Object.keys(STATE.players).filter(k=>STATE.players[k].isBot && k!=='SYSTEM_MM').length + (payload.amount || 1)); }
         if(type==='ACTION_CHARITY') {
             const p = STATE.players[STATE.myProfile.id];
             if(p && p.solBalance >= payload.amount && payload.amount > 0) {
@@ -1271,7 +1277,7 @@ function ViewLobby() {
 
                         <label class="block mb-6">
                             <div class="flex justify-between text-[10px] text-slate-400 font-bold mb-2 uppercase tracking-wide"><span>Max Actores:</span><span class="${STATE.roomConfig.isOffline ? 'text-purple-400' : 'text-emerald-400'} font-mono" id="lbl-maxplayers">${STATE.roomConfig.maxPlayers}</span></div>
-                            <input type="range" min="2" max="2050" value="${STATE.roomConfig.maxPlayers}" oninput="document.getElementById('lbl-maxplayers').innerText=this.value; STATE.roomConfig.maxPlayers=parseInt(this.value);" onchange="broadcastState();" class="w-full ${STATE.roomConfig.isOffline ? 'accent-purple-500' : 'accent-emerald-500'} h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
+                            <input type="range" min="2" max="10050" value="${STATE.roomConfig.maxPlayers}" oninput="document.getElementById('lbl-maxplayers').innerText=this.value; STATE.roomConfig.maxPlayers=parseInt(this.value);" onchange="broadcastState();" class="w-full ${STATE.roomConfig.isOffline ? 'accent-purple-500' : 'accent-emerald-500'} h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
                         </label>
                         <label class="flex items-center gap-3 cursor-pointer mb-6 bg-slate-900 p-4 rounded-xl border border-slate-800 hover:border-emerald-500/50 transition-colors">
                             <input type="checkbox" ${STATE.roomConfig.botsEnabled ? 'checked' : ''} onchange="STATE.roomConfig.botsEnabled=this.checked; window.adjustBots(this.checked ? STATE.roomConfig.botCount : 0);" class="w-5 h-5 accent-emerald-500 rounded cursor-pointer shrink-0" />
@@ -1284,7 +1290,7 @@ function ViewLobby() {
                         ${STATE.roomConfig.botsEnabled ? `
                         <label class="block bg-slate-900 p-4 rounded-xl border border-slate-800">
                             <div class="flex justify-between text-[10px] text-slate-400 font-bold mb-2 uppercase tracking-wide"><span>Bots Iniciales:</span><span class="${STATE.roomConfig.isOffline ? 'text-purple-400' : 'text-emerald-400'} font-mono" id="lbl-bots-count">${STATE.roomConfig.botCount}</span></div>
-                            <input type="range" min="1" max="2000" value="${STATE.roomConfig.botCount}" oninput="document.getElementById('lbl-bots-count').innerText=this.value; STATE.roomConfig.botCount=parseInt(this.value);" onchange="window.adjustBots(parseInt(this.value));" class="w-full ${STATE.roomConfig.isOffline ? 'accent-purple-500' : 'accent-emerald-500'} h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
+                            <input type="range" min="1" max="10000" value="${STATE.roomConfig.botCount}" oninput="document.getElementById('lbl-bots-count').innerText=this.value; STATE.roomConfig.botCount=parseInt(this.value);" onchange="window.adjustBots(parseInt(this.value));" class="w-full ${STATE.roomConfig.isOffline ? 'accent-purple-500' : 'accent-emerald-500'} h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
                         </label>` : ''}
                     </div>` : ''}
                 </div>
@@ -1747,7 +1753,7 @@ function RenderLeaderboardSkeleton() {
                     <option value="followers" ${STATE.lbSort==='followers'?'selected':''}>📢 Seguidores</option>
                     <option value="reputation" ${STATE.lbSort==='reputation'?'selected':''}>🛡️ Reputación</option>
                 </select>
-                ${STATE.roomConfig.isHost ? `<button onclick="dispatchAction('ACTION_ADD_BOT')" class="w-full sm:w-auto bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 text-[10px] px-3 py-2 rounded-lg font-black transition-colors">+ Bot</button>` : ''}
+                ${STATE.roomConfig.isHost ? `<button onclick="const amt = parseInt(prompt('¿Cuántos bots quieres añadir a la partida?', '100')); if(!isNaN(amt) && amt>0) dispatchAction('ACTION_ADD_BOT', {amount: amt});" class="w-full sm:w-auto bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 text-[10px] px-3 py-2 rounded-lg font-black transition-colors">+ Añadir Bots</button>` : ''}
             </div>
         </div>
         <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl" id="lb-grid"></div>
