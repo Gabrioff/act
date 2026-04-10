@@ -103,7 +103,7 @@ const formatToken = (num) => new Intl.NumberFormat('en-US', { maximumFractionDig
 
 const VIRTUAL_USD_RESERVE = 20; 
 const BONDING_CURVE_LIMIT = 85; 
-const CEX_LISTING_MCAP = 10000000; // 10 Millones MCap para llegar a Binance/Coinbase
+const CEX_LISTING_MCAP = 10000000; 
 const getPrice = (solPool, tokenPool) => solPool / tokenPool;
 const calcTokensOut = (solIn, solPool, tokenPool) => tokenPool - ((solPool * tokenPool) / (solPool + solIn * 0.95)); 
 const calcSolOut = (tokensIn, solPool, tokenPool) => solPool - ((solPool * tokenPool) / (tokenPool + tokensIn * 0.95)); 
@@ -114,11 +114,12 @@ const calcSolOut = (tokensIn, solPool, tokenPool) => solPool - ((solPool * token
 let STATE = {
     route: 'lobby', 
     myProfile: null,
-    roomConfig: { code: '', name: 'Sala Degen', maxPlayers: 2050, isHost: false, isOffline: false, botsEnabled: true, botCount: 200 },
-    players: {},
+    roomConfig: { code: '', name: 'Sala Degen', maxPlayers: 2050, isHost: false, isOffline: false, botsEnabled: true, botCount: 200, botPostsEnabled: true },
+    players: {}, // En el host: TODOS los bots. En el cliente: Solo Humanos + Top 70 Bots
+    totalPlayerCount: 0, // Para mantener el contador visual exacto en los clientes
     tokens: {},
     chat: [],
-    posts: [], // Nueva Red Social DegenX
+    posts: [],
     gameState: 'waiting', 
     ping: 0,
     toasts: [],
@@ -216,6 +217,7 @@ function loadGameFromStorage() {
         if(loaded && loaded.players && loaded.roomConfig) {
             STATE.players = loaded.players; STATE.tokens = loaded.tokens || {};
             STATE.roomConfig = loaded.roomConfig; STATE.chat = loaded.chat || []; STATE.posts = loaded.posts || []; STATE.gameState = loaded.gameState || 'waiting';
+            STATE.totalPlayerCount = Object.keys(STATE.players).length;
             
             const hostProfile = Object.values(STATE.players).find(p => !p.isBot) || STATE.players[Object.keys(STATE.players)[0]];
             STATE.myProfile = { ...hostProfile };
@@ -272,7 +274,7 @@ async function toggleVoice() {
         const dataArray = new Uint8Array(bufferLength);
 
         STATE.voiceActive = true;
-        tLog("Chat de Voz Activado y Compartiendo", "text-emerald-400");
+        tLog("Chat de Voz Activado", "text-emerald-400");
         updateUI();
 
         if (peer && !STATE.roomConfig.isOffline) {
@@ -313,9 +315,7 @@ const WEBRTC_CONFIG = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun.services.mozilla.com' },
-            { urls: 'stun:global.stun.twilio.com:3478' },
-            { urls: 'stun:stun.cloudflare.com:3478' }
+            { urls: 'stun:stun.services.mozilla.com' }
         ]
     }
 };
@@ -348,6 +348,7 @@ window.adjustBots = function(targetCount) {
         const toRemove = currentBotKeys.length - targetCount;
         for (let i = 0; i < toRemove; i++) delete STATE.players[currentBotKeys[i]];
     }
+    STATE.totalPlayerCount = Object.keys(STATE.players).length;
     broadcastState();
 };
 
@@ -360,7 +361,6 @@ let currentBrokerIndex = 0;
 
 function initNetwork(roomId, mode, customBotCount = 20) {
     if (peer && peer.destroy) { peer.destroy(); peer = null; }
-    // No destruir mqttClient al reconectar para evitar que se reinicie todo si solo falla MQTT temporalmente.
     if(mqttClient && mode === 'offline') { mqttClient.end(); mqttClient = null; }
     STATE.netLogs = []; 
 
@@ -427,12 +427,8 @@ function initNetwork(roomId, mode, customBotCount = 20) {
                 
                 if(window.handshakeInterval) clearInterval(window.handshakeInterval);
                 window.handshakeInterval = setInterval(() => {
-                    if(Object.keys(STATE.players).length <= 1) {
-                        tLog(`[!] Intentando conectar (Host ocupado o de lejos)...`, "text-orange-400");
-                        mqttClient.publish(`dgn/${roomId}/in`, JSON.stringify(joinPacket));
-                    } else {
-                        clearInterval(window.handshakeInterval);
-                    }
+                    tLog(`[!] Intentando conectar (Host ocupado o de lejos)...`, "text-orange-400");
+                    mqttClient.publish(`dgn/${roomId}/in`, JSON.stringify(joinPacket));
                 }, 3000);
             }
         });
@@ -454,7 +450,7 @@ function initNetwork(roomId, mode, customBotCount = 20) {
         });
     }
 
-    // WEBRTC P2P DATA (LA RUTA ULTRA RÁPIDA)
+    // WEBRTC P2P DATA (LA RUTA ULTRA RÁPIDA 0MS)
     if(!peer) {
         try {
             if (mode === 'host') {
@@ -469,7 +465,7 @@ function initNetwork(roomId, mode, customBotCount = 20) {
                         if (data.senderId) {
                             window.clientConns[data.senderId] = conn;
                             if (data.type === 'P2P_HELLO') {
-                                conn.send({ type: 'STATE_SYNC', payload: { players: STATE.players, tokens: STATE.tokens, chat: STATE.chat, posts: STATE.posts, gameState: STATE.gameState } });
+                                conn.send({ type: 'STATE_SYNC', payload: getCompressedState() });
                                 return;
                             }
                         }
@@ -552,10 +548,8 @@ function startSystemEvents() {
             pText = shillMessages[Math.floor(Math.random() * shillMessages.length)];
         }
         
-        // El System MM postea noticias
         handlePostHost(pText, 'SYSTEM_MM');
         
-        // Simular efecto de mercado
         const simVol = Math.random() * 8 + 2; 
         if (isFud) {
              const mm = STATE.players['SYSTEM_MM'];
@@ -603,6 +597,7 @@ function processMessageAsHost(data) {
                 return;
             }
             STATE.players[payload.id] = { ...payload, solBalance: 10, portfolio: {}, reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0, followers: 0 };
+            STATE.totalPlayerCount = Object.keys(STATE.players).length;
         }
         mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify({ type: 'ROOM_CONFIG', payload: STATE.roomConfig, target: payload.id }));
         broadcastState();
@@ -620,7 +615,7 @@ function processMessageAsHost(data) {
         const p = STATE.players[senderId];
         if(p && p.solBalance >= payload.amount && payload.amount > 0) {
             p.solBalance -= payload.amount; p.reputation = Math.min(100, (p.reputation || 1) + payload.amount * 5); 
-            p.followers += Math.floor(payload.amount * 10); // Caridad da seguidores
+            p.followers += Math.floor(payload.amount * 10); 
             handleChatHost(`💖 ${p.name} quemó ${formatUSD(payload.amount)} por beneficencia!`, senderId, true);
             broadcastState();
         }
@@ -629,7 +624,7 @@ function processMessageAsHost(data) {
         const p = STATE.players[senderId];
         if(p && p.solBalance >= payload.amount && payload.amount > 0) {
             p.solBalance -= payload.amount; p.reputation = Math.min(100, (p.reputation || 1) + payload.amount * 8); 
-            p.followers += Math.floor(payload.amount * 20); // Airdrops dan más seguidores
+            p.followers += Math.floor(payload.amount * 20); 
             const humans = Object.values(STATE.players).filter(pl => !pl.isBot && pl.id !== senderId);
             if (humans.length > 0) {
                 const split = payload.amount / humans.length;
@@ -670,16 +665,17 @@ function processMessageAsClient(data) {
     const { type, payload, senderId, time, target } = data;
     
     if (type === 'ROOM_CONFIG' && target === STATE.myProfile.id) {
-        if (window.handshakeInterval) clearInterval(window.handshakeInterval); // PERMITIR UNIRSE CUANDO YA INICIÓ
+        if (window.handshakeInterval) clearInterval(window.handshakeInterval); // Romper bucle de espera inmediatamente
         STATE.roomConfig.name = payload.name;
         STATE.roomConfig.hostPeerId = payload.hostPeerId; 
+        STATE.roomConfig.botPostsEnabled = payload.botPostsEnabled;
         requestUIRender(true);
 
         if (payload.hostPeerId && (!window.dataConn || !window.dataConn.open)) {
             try {
                 window.dataConn = peer.connect(payload.hostPeerId);
                 window.dataConn.on('open', () => { 
-                    tLog("⚡ Conexión P2P Directa Establecida", "text-cyan-400"); 
+                    tLog("⚡ Conexión P2P Directa Establecida (Latencia 0ms)", "text-cyan-400"); 
                     window.dataConn.send({ type: 'P2P_HELLO', senderId: STATE.myProfile.id });
                 });
                 window.dataConn.on('data', (data) => processMessageAsClient(data));
@@ -688,7 +684,7 @@ function processMessageAsClient(data) {
     }
     
     if (type === 'STATE_SYNC') {
-        if (window.handshakeInterval) clearInterval(window.handshakeInterval); // PERMITIR UNIRSE CUANDO YA INICIÓ
+        if (window.handshakeInterval) clearInterval(window.handshakeInterval);
         if (STATE.lastSyncTime && time && time < STATE.lastSyncTime) return; 
         if (time) STATE.lastSyncTime = time;
 
@@ -697,6 +693,7 @@ function processMessageAsClient(data) {
         STATE.gameState = payload.gameState; 
         STATE.chat = payload.chat;
         if(payload.posts) STATE.posts = payload.posts;
+        if(payload.totalPlayerCount) STATE.totalPlayerCount = payload.totalPlayerCount;
         
         let force = false;
         if(STATE.route === 'lobby' && STATE.gameState === 'playing') { STATE.route = 'game'; force = true; }
@@ -711,20 +708,47 @@ function processMessageAsClient(data) {
     if (type === 'EVENT_ALERT') { if (STATE.trackedIds.has(senderId)) addToast(payload.msg, payload.icon); }
 }
 
+// ---------------- ALGORITMO COMPRESIÓN (PING 0MS REAL) ----------------
+function getCompressedState() {
+    const humans = {};
+    const bots = [];
+    
+    Object.values(STATE.players).forEach(p => {
+        if (!p.isBot || p.id === 'SYSTEM_MM') humans[p.id] = p;
+        else bots.push(p);
+    });
+
+    bots.sort((a,b) => (b.solBalance + (b.solStaked||0)) - (a.solBalance + (a.solStaked||0)));
+    const topBots = bots.slice(0, 70); 
+    
+    const compressedPlayers = { ...humans };
+    topBots.forEach(b => compressedPlayers[b.id] = b);
+
+    const compressedTokens = {};
+    Object.values(STATE.tokens).forEach(t => {
+        compressedTokens[t.id] = {
+            ...t,
+            history: t.history ? t.history.slice(-25) : [] // Solo enviar últimas velas para UI, el Host retiene todas
+        };
+    });
+
+    return { 
+        players: compressedPlayers, 
+        tokens: compressedTokens, 
+        chat: STATE.chat.slice(0, 30), 
+        posts: STATE.posts.slice(0, 30), 
+        gameState: STATE.gameState,
+        totalPlayerCount: Object.keys(STATE.players).length
+    };
+}
+
 let lastMqttBroadcast = 0;
 
 function broadcastState() {
     if (STATE.roomConfig.isHost) {
-        requestUIRender(); // UI local del host se actualiza al instante sin delay
-        
+        requestUIRender(); 
         const syncTime = Date.now();
-        
-        // GARBAGE COLLECTOR: Mantiene la RAM limpia limitando el historial (Crucial para ping 0)
-        Object.values(STATE.tokens).forEach(t => {
-            if(t.history && t.history.length > 100) t.history = t.history.slice(-100);
-        });
-
-        const syncPayload = { players: STATE.players, tokens: STATE.tokens, chat: STATE.chat, posts: STATE.posts, gameState: STATE.gameState };
+        const syncPayload = getCompressedState(); // MAGIA DE LATENCIA CERO: Paquete ultra ligero
 
         // P2P ULTRA RÁPIDO (0ms Latencia - Sin Throttling)
         if (window.clientConns) {
@@ -734,7 +758,7 @@ function broadcastState() {
             });
         }
 
-        // MQTT Fallback (Ligero) - Limitado a 1 vez por segundo para no banear el broker público
+        // MQTT Fallback (Ligero) - Limitado a 1 vez por segundo para no saturar el websocket público
         if (!STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
             if (syncTime - lastMqttBroadcast > 1000) {
                 lastMqttBroadcast = syncTime;
@@ -760,16 +784,15 @@ function hostEmitAlert(senderId, msg, icon) {
 // ==========================================
 function calculateHypeMultiplier(tokenTicker) {
     let hype = 1.0;
-    // Mirar los últimos 30 posts en DegenX
     STATE.posts.slice(0, 30).forEach(p => {
         if(p.text.includes(`$${tokenTicker}`)) {
             const author = STATE.players[p.authorId];
             if(author && author.followers > 0) {
-                hype += (author.followers / 20000); // 20k followers = +1x al multiplicador base
+                hype += (author.followers / 20000); 
             }
         }
     });
-    return Math.min(hype, 5.0); // Máximo 5x de hype por redes sociales
+    return Math.min(hype, 5.0); 
 }
 
 function handlePostHost(text, playerId) {
@@ -785,7 +808,7 @@ function handlePostHost(text, playerId) {
         text: text.substring(0, 280),
         time: Date.now()
     });
-    STATE.posts = STATE.posts.slice(0, 80); // Mantener límite de 80 posts para no saturar memoria
+    STATE.posts = STATE.posts.slice(0, 80); 
     broadcastState();
 }
 
@@ -801,7 +824,7 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
     if (!currentCandle || Date.now() - currentCandle.time > 5000) { 
         if (currentCandle) {
             token.history.push(currentCandle);
-            if (token.history.length > 100) token.history.shift(); // LIMITAR HISTORIAL DE VELAS
+            if (token.history.length > 100) token.history.shift();
         }
         currentCandle = { time: Date.now(), open: currentPrice, high: currentPrice, low: currentPrice, close: currentPrice, vol: 0 };
     }
@@ -839,7 +862,6 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
     const creator = STATE.players[token.creatorId];
 
     if (mcapUsd >= CEX_LISTING_MCAP && !token.milestones.mCEX) {
-        // EXCHANGES TIER 1 LISTING (10M MCap)
         token.milestones.mCEX = true;
         milestoneMsg = `🏦 ¡ALERTA GLOBAL! $${token.ticker} HA SIDO LISTADA EN BINANCE. VOLUMEN INSTITUCIONAL ENTRANTE.`;
         postMsg = `🚨 BOOM 🚨 $${token.ticker} acaba de ser listada en los principales CEX. ¡Esto va a mil millones! 🚀`;
@@ -847,16 +869,14 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
             creator.reputation = Math.min(100, (creator.reputation || 1) + 50); 
             creator.followers += 20000 + Math.floor(Math.random() * 10000); 
         }
-        // El MM compra masivamente
         const mm = STATE.players['SYSTEM_MM'];
         if(mm) {
-            const mmBuy = token.solPool * 0.5; // Compra un 50% de la pool actual para pumpearlo
+            const mmBuy = token.solPool * 0.5; 
             const tkOut = calcTokensOut(mmBuy, token.solPool, token.tokenPool);
             token.solPool += mmBuy; token.tokenPool -= tkOut;
             mm.solBalance -= mmBuy; mm.portfolio[token.id] = (mm.portfolio[token.id] || 0) + tkOut;
         }
     } else if (realLiq >= BONDING_CURVE_LIMIT && !token.milestones.mRaydium) {
-        // DEX LISTING
         token.milestones.mRaydium = true; 
         milestoneMsg = `👑 $${token.ticker} COMPLETÓ LA CURVA Y SE FUE A RAYDIUM!`;
         postMsg = `Acabo de ver a $${token.ticker} tocar Raydium. El dev es un chad. Enhorabuena. 🔥`;
@@ -895,13 +915,12 @@ function handleLaunchHost(name, ticker, image, devBuy, playerId) {
     };
     
     player.reputation = Math.min(100, (player.reputation || 1) + 0.5);
-    player.followers += 10; // Pequeño boost por lanzar
+    player.followers += 10; 
 
     const logMsg = `🚀 ${player.name} lanzó $${STATE.tokens[tokenId].ticker}`;
     STATE.chat.unshift({ id: Date.now(), sender: 'System', text: logMsg, sys: true });
     STATE.chat = STATE.chat.slice(0, 80);
     
-    // Auto-post on DegenX
     handlePostHost(`Acabo de desplegar $${STATE.tokens[tokenId].ticker}. El contrato es seguro. ¡Ape in! 🦍`, playerId);
 
     hostEmitAlert(playerId, logMsg, '🚀');
@@ -941,7 +960,7 @@ function handleBuyLuxuryHost(itemId, playerId) {
     if (!player || !item || player.solBalance < item.price) return;
     player.solBalance -= item.price; player.luxuries = [...(player.luxuries || []), item.icon];
     player.reputation = Math.min(100, (player.reputation || 1) + item.rep);
-    player.followers += item.rep * 10; // Presumir da seguidores
+    player.followers += item.rep * 10; 
     STATE.chat.unshift({ id: Date.now(), sender: 'System', text: `🛒 ${player.name} presumió su nuevo ${item.name} ${item.icon}`, sys: true });
     STATE.chat = STATE.chat.slice(0, 80); 
     handlePostHost(`Flexeando mi nuevo ${item.name} ${item.icon}. Gracias por la liquidez plebeyos. 💸`, playerId);
@@ -963,13 +982,13 @@ function startBotBrain() {
         if (botList.length === 0) return;
 
         const tokenKeys = Object.keys(STATE.tokens);
-        const activeCount = Math.min(150, Math.max(5, Math.floor(botList.length * 0.05)));
+        // CPU OPTIMIZATION: Solo simular hasta 50 trades simultáneos para no matar la pestaña del host. El efecto de 2000 activos se siente igual.
+        const activeCount = Math.min(50, Math.max(5, Math.floor(botList.length * 0.05)));
         const activeBots = botList.sort(() => 0.5 - Math.random()).slice(0, activeCount);
         let didTrade = false;
 
         activeBots.forEach(bot => {
-            // Posting aleatorio en DegenX
-            if(tokenKeys.length > 0 && Math.random() < 0.02) {
+            if(STATE.roomConfig.botPostsEnabled && tokenKeys.length > 0 && Math.random() < 0.02) {
                 const randomT = STATE.tokens[tokenKeys[Math.floor(Math.random() * tokenKeys.length)]];
                 const holding = bot.portfolio[randomT.id];
                 if(holding && holding > 0) {
@@ -1008,7 +1027,6 @@ function startBotBrain() {
                     if (bot.strategy === 'Degen' || bot.strategy === 'PaperHands') return true; 
                     if (creatorRep < 10 && bot.strategy !== 'RugPuller') return false; 
                     
-                    // SOCIAL MULTIPLIER (Los bots compran basándose en la influencia)
                     let hypeMulti = calculateHypeMultiplier(t.ticker);
                     const baseProb = 0.4;
                     if (Math.random() > (baseProb * hypeMulti)) return false; 
@@ -1221,7 +1239,7 @@ function ViewLobby() {
             </div>
             <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto">
                 <div class="flex flex-col min-h-[300px] bg-slate-950 rounded-2xl border border-slate-800 p-4">
-                    <h3 class="text-xs font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">${Icons.Users} Jugadores (${Object.keys(STATE.players).length})</h3>
+                    <h3 class="text-xs font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">${Icons.Users} Jugadores (${STATE.totalPlayerCount || Object.keys(STATE.players).length})</h3>
                     <div class="space-y-2 flex-1 overflow-y-auto pr-2">
                         ${Object.values(STATE.players).map(p => {
                             const r = getRank(p.solBalance + (p.solStaked||0));
@@ -1258,6 +1276,10 @@ function ViewLobby() {
                         <label class="flex items-center gap-3 cursor-pointer mb-6 bg-slate-900 p-4 rounded-xl border border-slate-800 hover:border-emerald-500/50 transition-colors">
                             <input type="checkbox" ${STATE.roomConfig.botsEnabled ? 'checked' : ''} onchange="STATE.roomConfig.botsEnabled=this.checked; window.adjustBots(this.checked ? STATE.roomConfig.botCount : 0);" class="w-5 h-5 accent-emerald-500 rounded cursor-pointer shrink-0" />
                             <div class="flex flex-col"><span class="text-xs text-white font-bold">Habilitar IA Bots</span></div>
+                        </label>
+                        <label class="flex items-center gap-3 cursor-pointer mb-6 bg-slate-900 p-4 rounded-xl border border-slate-800 hover:border-emerald-500/50 transition-colors">
+                            <input type="checkbox" ${STATE.roomConfig.botPostsEnabled ? 'checked' : ''} onchange="STATE.roomConfig.botPostsEnabled=this.checked; broadcastState();" class="w-5 h-5 accent-emerald-500 rounded cursor-pointer shrink-0" />
+                            <div class="flex flex-col"><span class="text-xs text-white font-bold">Bots publican en DegenX</span></div>
                         </label>
                         ${STATE.roomConfig.botsEnabled ? `
                         <label class="block bg-slate-900 p-4 rounded-xl border border-slate-800">
@@ -1588,7 +1610,7 @@ function RenderTokenDetailSkeleton() {
                         <div class="flex justify-between text-slate-500 font-bold uppercase tracking-wider"><span>Liquidez Real:</span> <span id="tok-real-liq" class="font-mono text-xs">...</span></div>
                     </div>
 
-                    <button onclick="const a=parseFloat(document.getElementById('t-amount').value); if(a>0){ dispatchAction('ACTION_TRADE', {tokenId:'${token.id}', isBuy:${STATE.tradeType==='buy'}, amount:a}); document.getElementById('t-amount').value=''; STATE.tradeAmount=''; requestUIRender(); }" class="w-full py-3 md:py-4 rounded-xl font-black text-sm md:text-lg uppercase tracking-widest transition-all shadow-lg ${STATE.tradeType==='buy' ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-emerald-500/20' : 'bg-red-500 text-slate-950 hover:bg-red-400 shadow-red-500/20'}">
+                    <button onclick="const a=parseFloat(document.getElementById('t-amount').value); if(a>0){ dispatchAction('ACTION_TRADE', {tokenId:'${token.id}', isBuy:${STATE.tradeType==='buy'}, amount:a}); document.getElementById('t-amount').value=''; STATE.tradeAmount=''; }" class="w-full py-3 md:py-4 rounded-xl font-black text-sm md:text-lg uppercase tracking-widest transition-all shadow-lg ${STATE.tradeType==='buy' ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-emerald-500/20' : 'bg-red-500 text-slate-950 hover:bg-red-400 shadow-red-500/20'}">
                         ${STATE.tradeType==='buy' ? 'Ape In' : 'Dump'}
                     </button>
 
@@ -1981,8 +2003,13 @@ function renderModal() {
     const mc = document.getElementById('modal-container');
     if(!STATE.viewingProfileId) { mc.classList.add('hidden'); return; }
     
+    // Prevenir fallo si el ID no está cargado en este cliente por estar fuera del Top 70
     const p = STATE.players[STATE.viewingProfileId];
-    if(!p) { mc.classList.add('hidden'); return; }
+    if(!p) { 
+        addToast("Perfil no disponible en memoria", "❌"); 
+        mc.classList.add('hidden'); 
+        return; 
+    }
 
     const isMe = p.id === STATE.myProfile.id;
     const isTracked = STATE.trackedIds.has(p.id);
