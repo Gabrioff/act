@@ -709,26 +709,55 @@ function processMessageAsClient(data) {
     if (type === 'EVENT_ALERT') { if (STATE.trackedIds.has(senderId)) addToast(payload.msg, payload.icon); }
 }
 
+let pendingBroadcast = null;
+let lastBroadcastTime = 0;
+let lastMqttBroadcast = 0;
+
 function broadcastState() {
     if (STATE.roomConfig.isHost) {
-        const syncTime = Date.now();
-        const syncPayload = { players: STATE.players, tokens: STATE.tokens, chat: STATE.chat, posts: STATE.posts, gameState: STATE.gameState };
-
-        // P2P Ultra Rápido (Principal)
-        if (window.clientConns) {
-            const msgObjFull = { type: 'STATE_SYNC', time: syncTime, payload: syncPayload };
-            Object.values(window.clientConns).forEach(c => {
-                if(c.open) c.send(msgObjFull);
-            });
+        requestUIRender(); // UI local del host se actualiza al instante sin delay
+        
+        const now = Date.now();
+        // THROTTLING: Máximo 3 envíos por segundo por P2P para evitar Buffer Bloat (Saturación de red)
+        if (now - lastBroadcastTime < 300) {
+            if (!pendingBroadcast) {
+                pendingBroadcast = setTimeout(() => {
+                    pendingBroadcast = null;
+                    executeNetworkBroadcast();
+                }, 300);
+            }
+            return;
         }
+        lastBroadcastTime = now;
+        executeNetworkBroadcast();
+    }
+}
 
-        // MQTT Fallback (Ligero)
-        if (!STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
+function executeNetworkBroadcast() {
+    const syncTime = Date.now();
+    
+    // GARBAGE COLLECTOR: Evitar que el historial de gráficas crezca infinitamente y mate el Ping
+    Object.values(STATE.tokens).forEach(t => {
+        if(t.history && t.history.length > 100) t.history = t.history.slice(-100);
+    });
+
+    const syncPayload = { players: STATE.players, tokens: STATE.tokens, chat: STATE.chat, posts: STATE.posts, gameState: STATE.gameState };
+
+    // P2P Ultra Rápido (Principal) - Data fluida y ligera
+    if (window.clientConns) {
+        const msgObjFull = { type: 'STATE_SYNC', time: syncTime, payload: syncPayload };
+        Object.values(window.clientConns).forEach(c => {
+            if(c.open) c.send(msgObjFull);
+        });
+    }
+
+    // MQTT Fallback (Ligero) - Limitado a 1 vez cada 2 segundos para no banear el broker público
+    if (!STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
+        if (syncTime - lastMqttBroadcast > 2000) {
+            lastMqttBroadcast = syncTime;
             const msg = { type: 'STATE_SYNC', time: syncTime, payload: syncPayload };
             mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify(msg));
         }
-        
-        requestUIRender(); 
     }
 }
 
@@ -786,7 +815,10 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
     
     let currentCandle = token.currentCandle;
     if (!currentCandle || Date.now() - currentCandle.time > 5000) { 
-        if (currentCandle) token.history.push(currentCandle);
+        if (currentCandle) {
+            token.history.push(currentCandle);
+            if (token.history.length > 100) token.history.shift(); // LIMITAR HISTORIAL DE VELAS
+        }
         currentCandle = { time: Date.now(), open: currentPrice, high: currentPrice, low: currentPrice, close: currentPrice, vol: 0 };
     }
 
