@@ -178,7 +178,7 @@ function tLog(msg, color='text-emerald-400') {
 }
 
 window.copyInviteLink = function() {
-    const link = window.location.origin + window.location.pathname.replace('game.html', 'index.html') + '?room=' + STATE.roomConfig.code;
+    const link = window.location.origin + window.location.pathname.replace('game.html', 'index.html') + '?code=' + STATE.roomConfig.code;
     try { navigator.clipboard.writeText(link); addToast('Link copiado!', '📋');
     } catch(e) {
         const dummy = document.createElement('input'); document.body.appendChild(dummy);
@@ -325,7 +325,6 @@ const WEBRTC_CONFIG = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun.services.mozilla.com' },
             { urls: 'stun:global.stun.twilio.com:3478?transport=udp' }
         ]
     }
@@ -350,21 +349,21 @@ window.adjustBots = function(targetCount) {
             let startBal = 10;
             let botFollowers = 0;
             
-            // Limit exactly 10 millionaires max in the entire economy
+            // Forzar 10 millonarios y 100 ballenas de 10k
             if (currentMillionaires < 10) {
-                startBal = 1000000 + Math.random() * 2000000; // Between 1M and 3M
+                startBal = 1000000 + Math.random() * 2000000; 
                 botFollowers = 50000 + Math.floor(Math.random() * 50000);
-                strategy = 'Whale'; // Force them to be whales for safe behavior
+                strategy = 'Whale'; 
                 currentMillionaires++;
             } else if (currentRichBots < 100) {
-                startBal = 10000 + Math.random() * 5000; // 10k to 15k
+                startBal = 10000 + Math.random() * 5000; 
                 botFollowers = 5000 + Math.floor(Math.random() * 10000);
                 strategy = 'Whale'; 
                 currentRichBots++;
             } else if (strategy === 'Degen' || strategy === 'Sniper' || strategy === 'RugPuller' || strategy === 'VolumeSniper') { startBal = 40 + Math.random() * 60; botFollowers = 100 + Math.floor(Math.random() * 1000); }
             else if (strategy === 'CopyTrader') { startBal = 80 + Math.random() * 120; botFollowers = 50; }
             else if (strategy === 'PaperHands') { startBal = 15 + Math.random() * 20; botFollowers = Math.floor(Math.random() * 50); }
-            else { startBal = 20 + Math.random() * 30; } // Scalper, Hodler
+            else { startBal = 20 + Math.random() * 30; } 
             
             const id = `bot_${Date.now()}_${Math.random().toString(36).substr(2,5)}`;
             STATE.players[id] = { 
@@ -384,8 +383,7 @@ window.adjustBots = function(targetCount) {
 
 const BROKER_URLS = [
     'wss://broker.emqx.io:8084/mqtt',      
-    'wss://broker.hivemq.com:8884/mqtt',   
-    'wss://test.mosquitto.org:8081/mqtt'   
+    'wss://broker.hivemq.com:8884/mqtt'  
 ];
 let currentBrokerIndex = 0;
 
@@ -395,7 +393,9 @@ function setupSystemBots() {
     if(!STATE.players['SYSTEM_BINANCE']) STATE.players['SYSTEM_BINANCE'] = { id: 'SYSTEM_BINANCE', name: 'Binance', avatar: '🔶', isBot: true, isVerified: true, solBalance: 9999999, portfolio: {}, reputation: 100, solStaked: 0, followers: 2000000 };
 }
 
-function initNetwork(roomId, mode, customBotCount = 50) {
+function initNetwork(rawRoomId, mode, customBotCount = 50) {
+    const roomId = String(rawRoomId).trim().toUpperCase(); // Forzar mayúsculas para evitar desconexiones
+    
     if (peer && peer.destroy) { peer.destroy(); peer = null; }
     if(mqttClient && mode === 'offline') { mqttClient.end(); mqttClient = null; }
     STATE.netLogs = []; 
@@ -441,7 +441,7 @@ function initNetwork(roomId, mode, customBotCount = 50) {
                 if(window.discoveryInterval) clearInterval(window.discoveryInterval);
                 window.discoveryInterval = setInterval(() => {
                     if (STATE.roomConfig.isHost && !STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
-                        mqttClient.publish('dgn_global_discovery_v2', JSON.stringify({
+                        const discoveryPayload = JSON.stringify({
                             code: STATE.roomConfig.code,
                             roomName: STATE.roomConfig.name,
                             hasMap: false,
@@ -449,7 +449,9 @@ function initNetwork(roomId, mode, customBotCount = 50) {
                             players: Object.keys(STATE.players).length,
                             max: STATE.roomConfig.maxPlayers,
                             gameState: STATE.gameState
-                        }));
+                        });
+                        mqttClient.publish('dgn_global_discovery', discoveryPayload);
+                        mqttClient.publish('dgn_global_discovery_v2', discoveryPayload);
                     }
                 }, 3000);
 
@@ -461,9 +463,9 @@ function initNetwork(roomId, mode, customBotCount = 50) {
                 
                 if(window.handshakeInterval) clearInterval(window.handshakeInterval);
                 window.handshakeInterval = setInterval(() => {
-                    tLog(`[!] Intentando conectar (Host ocupado o de lejos)...`, "text-orange-400");
+                    tLog(`[!] Reintentando conexión P2P (Host ocupado)...`, "text-orange-400");
                     mqttClient.publish(`dgn/${roomId}/in`, JSON.stringify(joinPacket));
-                }, 3000);
+                }, 2000);
             }
         });
 
@@ -777,7 +779,7 @@ function getCompressedState() {
     });
 
     bots.sort((a,b) => (b.solBalance + (b.solStaked||0)) - (a.solBalance + (a.solStaked||0)));
-    const topBots = bots.slice(0, 70); 
+    const topBots = bots.slice(0, 50); // Reducido a 50 para evitar límite de payload de MQTT
     
     const compressedPlayers = { ...humans };
     topBots.forEach(b => compressedPlayers[b.id] = b);
@@ -786,15 +788,15 @@ function getCompressedState() {
     Object.values(STATE.tokens).forEach(t => {
         compressedTokens[t.id] = {
             ...t,
-            history: t.history ? t.history.slice(-25) : [] 
+            history: t.history ? t.history.slice(-15) : [] // Límite de velas estricto
         };
     });
 
     return { 
         players: compressedPlayers, 
         tokens: compressedTokens, 
-        chat: STATE.chat.slice(0, 30), 
-        posts: STATE.posts.slice(0, 30), 
+        chat: STATE.chat.slice(0, 20), 
+        posts: STATE.posts.slice(0, 20), 
         races: STATE.races,
         gameState: STATE.gameState,
         totalPlayerCount: Object.keys(STATE.players).length
@@ -1358,7 +1360,7 @@ function startBotBrain() {
                         maxSafeInvest = Math.max(maxSafeInvest, 50000); // Massive buying power
                     } else if (bot.solBalance >= 10000) {
                         investRatio = 0.10; // 10% max of their portfolio per trade
-                        maxSafeInvest = Math.max(maxSafeInvest, 10000); // 10k max buy
+                        maxSafeInvest = Math.max(maxSafeInvest, 15000); // 15k max buy
                     }
 
                     const rawInvestAmount = bot.solBalance * investRatio * (0.8 + Math.random() * 0.4); 
@@ -2862,7 +2864,8 @@ window.onload = () => {
         return;
     }
 
-    const code = urlParams.get('code');
+    // Normalizar ID y código para evitar errores de mayúsculas o links rotos
+    let code = (urlParams.get('code') || urlParams.get('room') || '').trim().toUpperCase();
     const isHost = urlParams.get('host') === 'true';
     const isOffline = urlParams.get('offline') === 'true';
 
