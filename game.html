@@ -325,7 +325,8 @@ const WEBRTC_CONFIG = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun.services.mozilla.com' }
+            { urls: 'stun:stun.services.mozilla.com' },
+            { urls: 'stun:global.stun.twilio.com:3478?transport=udp' }
         ]
     }
 };
@@ -338,6 +339,7 @@ window.adjustBots = function(targetCount) {
     
     const currentBots = Object.values(STATE.players).filter(p => p.isBot && !p.id.startsWith('SYSTEM_'));
     let currentMillionaires = currentBots.filter(p => p.solBalance >= 1000000).length;
+    let currentRichBots = currentBots.filter(p => p.solBalance >= 10000 && p.solBalance < 1000000).length;
     
     if (currentBots.length < targetCount) {
         const toAdd = targetCount - currentBots.length;
@@ -354,8 +356,12 @@ window.adjustBots = function(targetCount) {
                 botFollowers = 50000 + Math.floor(Math.random() * 50000);
                 strategy = 'Whale'; // Force them to be whales for safe behavior
                 currentMillionaires++;
-            } else if (strategy === 'Whale') { startBal = 200 + Math.random() * 800; botFollowers = 5000 + Math.floor(Math.random() * 20000); }
-            else if (strategy === 'Degen' || strategy === 'Sniper' || strategy === 'RugPuller' || strategy === 'VolumeSniper') { startBal = 40 + Math.random() * 60; botFollowers = 100 + Math.floor(Math.random() * 1000); }
+            } else if (currentRichBots < 100) {
+                startBal = 10000 + Math.random() * 5000; // 10k to 15k
+                botFollowers = 5000 + Math.floor(Math.random() * 10000);
+                strategy = 'Whale'; 
+                currentRichBots++;
+            } else if (strategy === 'Degen' || strategy === 'Sniper' || strategy === 'RugPuller' || strategy === 'VolumeSniper') { startBal = 40 + Math.random() * 60; botFollowers = 100 + Math.floor(Math.random() * 1000); }
             else if (strategy === 'CopyTrader') { startBal = 80 + Math.random() * 120; botFollowers = 50; }
             else if (strategy === 'PaperHands') { startBal = 15 + Math.random() * 20; botFollowers = Math.floor(Math.random() * 50); }
             else { startBal = 20 + Math.random() * 30; } // Scalper, Hodler
@@ -500,10 +506,20 @@ function initNetwork(roomId, mode, customBotCount = 50) {
                         if (data.type === 'PING') { conn.send({ type: 'PONG', target: data.senderId, time: data.time }); return; }
                         processMessageAsHost(data);
                     });
+                    conn.on('error', (err) => tLog("Error P2P cliente: " + err, "text-yellow-400"));
                 });
                 peer.on('call', call => {
                     if (window.localAudioStream) call.answer(window.localAudioStream); else call.answer(); 
                     call.on('stream', remoteStream => playAudioStream(remoteStream, call.peer));
+                });
+                peer.on('error', (err) => {
+                    tLog("Error WebRTC Servidor: " + err.type, "text-red-400");
+                    if (err.type === 'unavailable-id') {
+                        // Si el host recarga, el ID antiguo sigue trabado. Generamos uno aleatorio de respaldo.
+                        peer.destroy();
+                        peer = new Peer(WEBRTC_CONFIG);
+                        peer.on('open', (id) => { STATE.myProfile.peerId = id; STATE.roomConfig.hostPeerId = id; broadcastState(); tLog("✓ Servidor P2P de respaldo activado", "text-emerald-400"); });
+                    }
                 });
             } else {
                 peer = new Peer(WEBRTC_CONFIG);
@@ -512,6 +528,7 @@ function initNetwork(roomId, mode, customBotCount = 50) {
                     if (window.localAudioStream) call.answer(window.localAudioStream); else call.answer(); 
                     call.on('stream', remoteStream => playAudioStream(remoteStream, call.peer));
                 });
+                peer.on('error', (err) => tLog("Error WebRTC Cliente: " + err.type, "text-red-400"));
             }
         } catch(e) { tLog("Servicio WebRTC no disponible.", "text-slate-500"); }
     }
@@ -712,13 +729,14 @@ function processMessageAsClient(data) {
 
         if (payload.hostPeerId && (!window.dataConn || !window.dataConn.open)) {
             try {
-                window.dataConn = peer.connect(payload.hostPeerId);
+                window.dataConn = peer.connect(payload.hostPeerId, { reliable: true, serialization: 'json' });
                 window.dataConn.on('open', () => { 
                     tLog("⚡ Conexión P2P Directa Establecida (Latencia 0ms)", "text-cyan-400"); 
                     window.dataConn.send({ type: 'P2P_HELLO', senderId: STATE.myProfile.id });
                 });
                 window.dataConn.on('data', (data) => processMessageAsClient(data));
-            } catch(e) {}
+                window.dataConn.on('error', (err) => tLog("Error flujo P2P: " + err, "text-red-400"));
+            } catch(e) { tLog("Fallo de instanciación P2P: " + e.message, "text-red-400"); }
         }
     }
     
@@ -1328,16 +1346,19 @@ function startBotBrain() {
 
                     // Smart Risk Control (Cap investments based on dynamic market depth)
                     let maxSafeInvest = 5; // Default safe for pump.fun early curve
-                    if (targetToken.exchange === 'Binance') maxSafeInvest = 2000;
-                    else if (targetToken.exchange === 'KuCoin') maxSafeInvest = 1000;
-                    else if (targetToken.exchange === 'CoinMarketCap') maxSafeInvest = 500;
-                    else if ((targetToken.solPool - vRes) > cLim) maxSafeInvest = 200; // Raydium
-                    else maxSafeInvest = Math.max(5, (cLim - (targetToken.solPool - vRes)) * 0.2); // Up to 20% of remaining curve
+                    if (targetToken.exchange === 'Binance') maxSafeInvest = 10000;
+                    else if (targetToken.exchange === 'KuCoin') maxSafeInvest = 5000;
+                    else if (targetToken.exchange === 'CoinMarketCap') maxSafeInvest = 2500;
+                    else if ((targetToken.solPool - vRes) > cLim) maxSafeInvest = 1000; // Raydium
+                    else maxSafeInvest = Math.max(5, (cLim - (targetToken.solPool - vRes)) * 0.5); // Up to 50% of remaining curve
                     
                     // Millionaires have strict max allocations to avoid breaking the AMM
                     if (bot.solBalance >= 1000000) {
-                        investRatio = 0.01; // 1% max of their portfolio per trade
-                        maxSafeInvest = Math.min(maxSafeInvest, 5000); // Absolute hard cap
+                        investRatio = 0.05; // 5% max of their portfolio per trade
+                        maxSafeInvest = Math.max(maxSafeInvest, 50000); // Massive buying power
+                    } else if (bot.solBalance >= 10000) {
+                        investRatio = 0.10; // 10% max of their portfolio per trade
+                        maxSafeInvest = Math.max(maxSafeInvest, 10000); // 10k max buy
                     }
 
                     const rawInvestAmount = bot.solBalance * investRatio * (0.8 + Math.random() * 0.4); 
@@ -1616,6 +1637,7 @@ function ViewGame() {
                 <button onclick="STATE.chatTab='global'; updateUI();" class="flex-1 py-4 text-[10px] font-black uppercase transition-colors flex items-center justify-center gap-2 ${STATE.chatTab === 'global' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}">${Icons.Message} Global</button>
                 <button onclick="STATE.chatTab='system'; updateUI();" class="flex-1 py-4 text-[10px] font-black uppercase transition-colors flex items-center justify-center gap-2 ${STATE.chatTab === 'system' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-slate-500'}">${Icons.Robot} Noticias/IA</button>
             </div>
+            <div id="chat-list" class="flex-1 overflow-y-auto p-4 space-y-3 text-sm flex flex-col-reverse min-h-0 w-full"></div>
             <div id="chat-list" class="flex-1 overflow-y-auto p-4 space-y-3 text-sm flex flex-col-reverse min-h-0"></div>
             ${STATE.chatTab === 'global' ? `
             <div class="p-3 border-t border-slate-800 bg-slate-950 shrink-0">
