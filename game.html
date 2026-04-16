@@ -178,7 +178,7 @@ function tLog(msg, color='text-emerald-400') {
 }
 
 window.copyInviteLink = function() {
-    const link = window.location.origin + window.location.pathname.replace('game.html', 'index.html') + '?code=' + STATE.roomConfig.code;
+    const link = window.location.origin + window.location.pathname.replace('game.html', 'index.html') + '?room=' + STATE.roomConfig.code;
     try { navigator.clipboard.writeText(link); addToast('Link copiado!', '📋');
     } catch(e) {
         const dummy = document.createElement('input'); document.body.appendChild(dummy);
@@ -349,21 +349,21 @@ window.adjustBots = function(targetCount) {
             let startBal = 10;
             let botFollowers = 0;
             
-            // Forzar 10 millonarios y 100 ballenas de 10k
+            // Limit exactly 10 millionaires max in the entire economy
             if (currentMillionaires < 10) {
-                startBal = 1000000 + Math.random() * 2000000; 
+                startBal = 1000000 + Math.random() * 2000000; // Between 1M and 3M
                 botFollowers = 50000 + Math.floor(Math.random() * 50000);
-                strategy = 'Whale'; 
+                strategy = 'Whale'; // Force them to be whales for safe behavior
                 currentMillionaires++;
             } else if (currentRichBots < 100) {
-                startBal = 10000 + Math.random() * 5000; 
+                startBal = 10000 + Math.random() * 5000; // 10k to 15k
                 botFollowers = 5000 + Math.floor(Math.random() * 10000);
                 strategy = 'Whale'; 
                 currentRichBots++;
             } else if (strategy === 'Degen' || strategy === 'Sniper' || strategy === 'RugPuller' || strategy === 'VolumeSniper') { startBal = 40 + Math.random() * 60; botFollowers = 100 + Math.floor(Math.random() * 1000); }
             else if (strategy === 'CopyTrader') { startBal = 80 + Math.random() * 120; botFollowers = 50; }
             else if (strategy === 'PaperHands') { startBal = 15 + Math.random() * 20; botFollowers = Math.floor(Math.random() * 50); }
-            else { startBal = 20 + Math.random() * 30; } 
+            else { startBal = 20 + Math.random() * 30; } // Scalper, Hodler
             
             const id = `bot_${Date.now()}_${Math.random().toString(36).substr(2,5)}`;
             STATE.players[id] = { 
@@ -1624,7 +1624,6 @@ function ViewGame() {
                 <button onclick="STATE.chatTab='global'; updateUI();" class="flex-1 py-4 text-[10px] font-black uppercase transition-colors flex items-center justify-center gap-2 ${STATE.chatTab === 'global' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}">${Icons.Message} Global</button>
                 <button onclick="STATE.chatTab='system'; updateUI();" class="flex-1 py-4 text-[10px] font-black uppercase transition-colors flex items-center justify-center gap-2 ${STATE.chatTab === 'system' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-slate-500'}">${Icons.Robot} Noticias/IA</button>
             </div>
-            <div id="chat-list" class="flex-1 overflow-y-auto p-4 space-y-3 text-sm flex flex-col-reverse min-h-0 w-full"></div>
             <div id="chat-list" class="flex-1 overflow-y-auto p-4 space-y-3 text-sm flex flex-col-reverse min-h-0"></div>
             ${STATE.chatTab === 'global' ? `
             <div class="p-3 border-t border-slate-800 bg-slate-950 shrink-0">
@@ -2849,7 +2848,7 @@ window.onload = () => {
         return;
     }
 
-    const code = urlParams.get('code') || urlParams.get('room');
+    const code = urlParams.get('code');
     const isHost = urlParams.get('host') === 'true';
     const isOffline = urlParams.get('offline') === 'true';
 
