@@ -348,8 +348,8 @@ window.adjustBots = function(targetCount) {
             let startBal = 10;
             let botFollowers = 0;
             
-            // Limit exactly 2 millionaires max in the entire economy
-            if (currentMillionaires < 2) {
+            // Limit exactly 10 millionaires max in the entire economy
+            if (currentMillionaires < 10) {
                 startBal = 1000000 + Math.random() * 2000000; // Between 1M and 3M
                 botFollowers = 50000 + Math.floor(Math.random() * 50000);
                 strategy = 'Whale'; // Force them to be whales for safe behavior
@@ -633,7 +633,7 @@ function processMessageAsHost(data) {
     }
     
     if (type === 'ACTION_TRADE') { handleTradeHost(payload.tokenId, payload.isBuy, payload.amount, senderId); broadcastState(); }
-    if (type === 'ACTION_LAUNCH') handleLaunchHost(payload.name, payload.ticker, payload.image, payload.devBuy, senderId);
+    if (type === 'ACTION_LAUNCH') handleLaunchHost(payload.name, payload.ticker, payload.image, payload.devBuy, senderId, payload.coFounders);
     if (type === 'ACTION_BURN') handleBurnHost(payload.tokenId, payload.amount, senderId);
     if (type === 'ACTION_CHAT') handleChatHost(payload.msg, senderId, false);
     if (type === 'ACTION_POST') handlePostHost(payload.text, senderId);
@@ -959,14 +959,29 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
     }
 }
 
-function handleLaunchHost(name, ticker, image, devBuy, playerId) {
-    const player = STATE.players[playerId];
-    const fee = 1; 
-    const actualDevBuy = Math.max(0, devBuy); 
+function handleLaunchHost(name, ticker, image, devBuy, playerId, coFounders = []) {
+    const creators = [playerId, ...(coFounders || [])].filter(id => STATE.players[id]); // Valid players only
+    const numCreators = creators.length;
+    const feePerPerson = 1 / numCreators;
+    const actualDevBuy = Math.max(0, devBuy);
+    const devBuyPerPerson = actualDevBuy / numCreators;
+    const totalCostPerPerson = feePerPerson + devBuyPerPerson;
 
-    if (!player || player.solBalance < (fee + actualDevBuy)) return;
+    // Check if all creators have enough balance
+    for (let id of creators) {
+        if (STATE.players[id].solBalance < totalCostPerPerson) {
+            if (id === playerId) hostEmitAlert(playerId, "No tienes suficiente saldo para el lanzamiento.", "❌");
+            else hostEmitAlert(playerId, `El co-fundador ${STATE.players[id].name} no tiene saldo suficiente.`, "❌");
+            return;
+        }
+    }
 
-    player.solBalance -= fee;
+    // Deduct balances
+    creators.forEach(id => {
+        STATE.players[id].solBalance -= totalCostPerPerson;
+        STATE.players[id].reputation = Math.min(100, (STATE.players[id].reputation || 1) + 0.5);
+        STATE.players[id].followers += 10;
+    });
     
     // Logica AMM Realista: La inversión del dev añade a la liquidez virtual base (x3)
     const vSol = VIRTUAL_USD_RESERVE + (actualDevBuy * 3);
@@ -975,25 +990,27 @@ function handleLaunchHost(name, ticker, image, devBuy, playerId) {
     
     const tokenId = ticker.toUpperCase() + '_' + Date.now();
     
+    const creatorNames = creators.map(id => STATE.players[id].name).join(', ');
+
     STATE.tokens[tokenId] = {
-        id: tokenId, name, ticker: ticker.toUpperCase(), image: image, creatorId: playerId, creatorName: player.name,
+        id: tokenId, name, ticker: ticker.toUpperCase(), image: image, 
+        creatorId: playerId, creatorIds: creators, creatorName: creatorNames,
         solPool: vSol, tokenPool: 1000000000, initialSupply: 1000000000, createdAt: Date.now(),
         virtualSol: vSol, curveLimit: cLim,
         milestones: {}, history: [], exchange: 'Pump.fun', accumulatedFees: 0, totalFeesEarned: 0,
         currentCandle: { time: Date.now(), open: initialPrice, high: initialPrice, low: initialPrice, close: initialPrice, vol: 0 }
     };
     
-    player.reputation = Math.min(100, (player.reputation || 1) + 0.5);
-    player.followers += 10; 
-
-    const logMsg = `🚀 ${player.name} lanzó $${STATE.tokens[tokenId].ticker}`;
+    const logMsg = `🚀 ${creatorNames} lanzaron $${STATE.tokens[tokenId].ticker}`;
     STATE.chat.unshift({ id: Date.now(), sender: 'System', text: logMsg, sys: true });
     STATE.chat = STATE.chat.slice(0, 80);
     
-    hostEmitAlert(playerId, logMsg, '🚀');
+    creators.forEach(id => hostEmitAlert(id, logMsg, '🚀'));
     
     if (actualDevBuy > 0) {
-        handleTradeHost(tokenId, true, actualDevBuy, playerId, false);
+        creators.forEach(id => {
+            handleTradeHost(tokenId, true, devBuyPerPerson, id, false);
+        });
     }
     
     broadcastState();
@@ -1053,32 +1070,51 @@ function handleBuyLuxuryHost(itemId, playerId) {
 function handleClaimFeesHost(tokenId, playerId) {
     const token = STATE.tokens[tokenId];
     const player = STATE.players[playerId];
-    if(!token || !player || token.creatorId !== playerId || token.accumulatedFees <= 0) return;
+    const creators = token.creatorIds || [token.creatorId];
 
-    const claimAmt = token.accumulatedFees;
-    player.solBalance += claimAmt;
-    token.totalFeesEarned = (token.totalFeesEarned || 0) + claimAmt;
+    if(!token || !player || !creators.includes(playerId) || token.accumulatedFees <= 0) return;
+
+    const claimAmtTotal = token.accumulatedFees;
+    const claimAmtPerPerson = claimAmtTotal / creators.length;
+
+    creators.forEach(id => {
+        if (STATE.players[id]) {
+            STATE.players[id].solBalance += claimAmtPerPerson;
+            hostEmitAlert(id, `Has reclamado ${formatUSD(claimAmtPerPerson)} en Fees del exchange ($${token.ticker}).`, "💰");
+        }
+    });
+
+    token.totalFeesEarned = (token.totalFeesEarned || 0) + claimAmtTotal;
     token.accumulatedFees = 0;
-    hostEmitAlert(playerId, `Has reclamado ${formatUSD(claimAmt)} en Fees del exchange.`, "💰");
     broadcastState();
 }
 
 function handleClaimAllFeesHost(playerId) {
     const player = STATE.players[playerId];
     if(!player) return;
-    let totalClaimed = 0;
+    let totalClaimedForMe = 0;
     
     Object.values(STATE.tokens).forEach(t => {
-        if(t.creatorId === playerId && t.accumulatedFees > 0) {
-            totalClaimed += t.accumulatedFees;
-            t.totalFeesEarned = (t.totalFeesEarned || 0) + t.accumulatedFees;
+        const creators = t.creatorIds || [t.creatorId];
+        if(creators.includes(playerId) && t.accumulatedFees > 0) {
+            const claimAmtTotal = t.accumulatedFees;
+            const claimAmtPerPerson = claimAmtTotal / creators.length;
+
+            creators.forEach(id => {
+                if (STATE.players[id]) {
+                    STATE.players[id].solBalance += claimAmtPerPerson;
+                    if (id !== playerId) hostEmitAlert(id, `Has recibido ${formatUSD(claimAmtPerPerson)} en Fees ($${t.ticker}).`, "💰");
+                }
+            });
+
+            totalClaimedForMe += claimAmtPerPerson;
+            t.totalFeesEarned = (t.totalFeesEarned || 0) + claimAmtTotal;
             t.accumulatedFees = 0;
         }
     });
 
-    if(totalClaimed > 0) {
-        player.solBalance += totalClaimed;
-        hostEmitAlert(playerId, `Has reclamado un total de ${formatUSD(totalClaimed)} en Fees.`, "💰");
+    if(totalClaimedForMe > 0) {
+        hostEmitAlert(playerId, `Has reclamado un total de ${formatUSD(totalClaimedForMe)} en Fees.`, "💰");
         broadcastState();
     } else {
         hostEmitAlert(playerId, `No tienes fees para reclamar actualmente.`, "❌");
@@ -1088,7 +1124,8 @@ function handleClaimAllFeesHost(playerId) {
 function handleUpgradeExchangeHost(tokenId, exchangeName, playerId) {
     const token = STATE.tokens[tokenId];
     const player = STATE.players[playerId];
-    if(!token || !player || token.creatorId !== playerId) return;
+    const creators = token.creatorIds || [token.creatorId];
+    if(!token || !player || !creators.includes(playerId)) return;
 
     const currentPrice = getPrice(token.solPool, token.tokenPool);
     const mcap = currentPrice * token.initialSupply;
@@ -1328,7 +1365,7 @@ function startBotBrain() {
 function dispatchAction(type, payload) {
     if (STATE.roomConfig.isHost) {
         if(type==='ACTION_TRADE') { handleTradeHost(payload.tokenId, payload.isBuy, payload.amount, STATE.myProfile.id); broadcastState(); }
-        if(type==='ACTION_LAUNCH') handleLaunchHost(payload.name, payload.ticker, payload.image, payload.devBuy, STATE.myProfile.id);
+        if(type==='ACTION_LAUNCH') handleLaunchHost(payload.name, payload.ticker, payload.image, payload.devBuy, STATE.myProfile.id, payload.coFounders);
         if(type==='ACTION_BURN') handleBurnHost(payload.tokenId, payload.amount, STATE.myProfile.id);
         if(type==='ACTION_CHAT') handleChatHost(payload.msg, STATE.myProfile.id, false);
         if(type==='ACTION_POST') handlePostHost(payload.text, STATE.myProfile.id);
@@ -1700,7 +1737,7 @@ function UpdateDevPanelDynamic() {
     const grid = document.getElementById('dev-tokens-grid');
     if(!grid) return;
 
-    const myTokens = Object.values(STATE.tokens).filter(t => t.creatorId === STATE.myProfile.id);
+    const myTokens = Object.values(STATE.tokens).filter(t => (t.creatorIds || [t.creatorId]).includes(STATE.myProfile.id));
     const totalTokens = myTokens.length;
     let totalFees = 0;
     let successfulTokens = 0;
@@ -1708,7 +1745,9 @@ function UpdateDevPanelDynamic() {
     myTokens.forEach(t => {
         const vRes = t.virtualSol || VIRTUAL_USD_RESERVE;
         const cLim = t.curveLimit || BONDING_CURVE_LIMIT;
-        totalFees += (t.totalFeesEarned || 0) + (t.accumulatedFees || 0);
+        const creatorsCount = t.creatorIds ? t.creatorIds.length : 1;
+        totalFees += ((t.totalFeesEarned || 0) + (t.accumulatedFees || 0)) / creatorsCount;
+        
         const progress = Math.min(100, ((t.solPool - vRes) / cLim) * 100);
         if(progress >= 100) successfulTokens++;
     });
@@ -1726,8 +1765,9 @@ function UpdateDevPanelDynamic() {
 
     grid.innerHTML = myTokens.map(token => {
         const mcap = getPrice(token.solPool, token.tokenPool) * token.initialSupply;
-        const feesToClaim = token.accumulatedFees || 0;
-        const totalEarned = token.totalFeesEarned || 0;
+        const creatorsCount = token.creatorIds ? token.creatorIds.length : 1;
+        const feesToClaim = (token.accumulatedFees || 0) / creatorsCount;
+        const totalEarned = (token.totalFeesEarned || 0) / creatorsCount;
 
         return `
         <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row justify-between gap-4 shadow-inner">
@@ -2165,13 +2205,13 @@ function RenderTokenDetailSkeleton() {
                             <h1 class="text-xl sm:text-2xl md:text-4xl font-black text-white tracking-tight mb-1 truncate">${token.name} <span class="text-emerald-400 text-sm md:text-xl bg-emerald-500/10 px-2 py-0.5 rounded-xl ml-1 font-mono border border-emerald-500/20">$${token.ticker}</span></h1>
                             <div class="flex flex-wrap items-center gap-2 text-[9px] md:text-sm font-bold text-slate-400">
                                 <span class="flex items-center gap-1 cursor-pointer hover:text-white transition-colors" onclick="STATE.viewingProfileId='${token.creatorId}'; STATE.giftTargetId=null; renderModal();">
-                                    Dev: <span class="underline">${token.creatorName}</span>
+                                    Dev(s): <span class="underline">${token.creatorName}</span>
                                 </span>
                                 <div class="w-1 h-1 bg-slate-700 rounded-full hidden sm:block"></div>
                                 <span class="flex items-center gap-1 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-800 shadow-inner" title="Reputación del Creador">
                                     <span class="text-slate-600">${Icons.Shield}</span> <span id="tok-dev-rep">...</span>
                                 </span>
-                                ${token.creatorId === me.id ? `<span class="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded-lg uppercase tracking-wider text-[8px]">Es tuyo</span>` : ''}
+                                ${(token.creatorIds || [token.creatorId]).includes(me.id) ? `<span class="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded-lg uppercase tracking-wider text-[8px]">Es tuyo</span>` : ''}
                             </div>
                         </div>
                     </div>
@@ -2324,14 +2364,16 @@ function UpdateTokenDetailDynamic() {
             </button>
         `;
         
-        if(token.creatorId === me.id) {
+        if((token.creatorIds || [token.creatorId]).includes(me.id)) {
             const hasEnoughMcap = mcap >= CEX_LISTING_MCAP;
+            const creatorsCount = token.creatorIds ? token.creatorIds.length : 1;
+            const feesToClaimPool = (token.accumulatedFees || 0) / creatorsCount;
 
             toolsHTML += `
             <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 mt-2">
                 <div class="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-2 flex justify-between">
                     <span>Panel de Dev</span>
-                    <span class="text-emerald-400">Fees: ${formatUSD(token.accumulatedFees || 0)}</span>
+                    <span class="text-emerald-400">Tus Fees: ${formatUSD(feesToClaimPool)}</span>
                 </div>
                 <div class="flex gap-2">
                     <button onclick="dispatchAction('ACTION_CLAIM_FEES', { tokenId: '${token.id}' });" class="flex-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-wider">
@@ -2564,7 +2606,7 @@ function RenderLaunch() {
     <div class="max-w-lg mx-auto bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-8 shadow-2xl animate-fade-in mt-4 md:mt-10">
         <h2 class="text-xl md:text-2xl font-black text-white mb-2 flex items-center gap-3">${Icons.Rocket} Desplegar Token</h2>
         <p class="text-[10px] md:text-xs text-slate-500 mb-6 md:mb-8 font-bold uppercase tracking-wider leading-relaxed">El token inicia con curva Pump.fun. Obtendrás fees del 2% en cada trade si estás verificado o el token se lista.</p>
-        <form id="launch-form" onsubmit="event.preventDefault(); const n=document.getElementById('l-name').value; const t=document.getElementById('l-ticker').value; const i=document.getElementById('l-image')?.value || STATE.launchData.image; const d=parseFloat(document.getElementById('l-devbuy').value)||0; if(n&&t){dispatchAction('ACTION_LAUNCH', {name:n, ticker:t, image:i, devBuy:d}); STATE.launchData.image=''; switchTab('market');}" class="space-y-4 md:space-y-5">
+        <form id="launch-form" onsubmit="event.preventDefault(); const n=document.getElementById('l-name').value; const t=document.getElementById('l-ticker').value; const i=document.getElementById('l-image')?.value || STATE.launchData.image; const d=parseFloat(document.getElementById('l-devbuy').value)||0; const cFs = Array.from(document.querySelectorAll('.co-founder-cb:checked')).map(cb=>cb.value); if(n&&t){dispatchAction('ACTION_LAUNCH', {name:n, ticker:t, image:i, devBuy:d, coFounders: cFs}); STATE.launchData.image=''; switchTab('market');}" class="space-y-4 md:space-y-5">
             <div>
                 <label class="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 md:mb-2 block">Nombre del Proyecto</label>
                 <input id="l-name" placeholder="Ej: Solana Doge" required class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 md:px-4 py-3 md:py-3.5 text-white focus:border-emerald-500 outline-none font-bold transition-colors text-xs md:text-sm" />
@@ -2586,6 +2628,19 @@ function RenderLaunch() {
             
             <div class="flex justify-center">
                 <img id="img-preview" src="${STATE.launchData.image.startsWith('data:image') ? STATE.launchData.image : ''}" class="${STATE.launchData.image.startsWith('data:image') ? '' : 'hidden'} w-12 h-12 md:w-16 md:h-16 rounded-xl object-cover border border-slate-700 shadow-md">
+            </div>
+
+            <div>
+                <label class="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 md:mb-2 block">Co-Fundadores (Opcional - Jugadores Reales)</label>
+                <div class="flex flex-wrap gap-2 max-h-24 overflow-y-auto bg-slate-950 p-2 rounded-xl border border-slate-800">
+                    ${Object.values(STATE.players).filter(p => !p.isBot && p.id !== STATE.myProfile.id).map(p => `
+                        <label class="flex items-center gap-2 bg-slate-900 px-2 py-1.5 rounded-lg border border-slate-700 cursor-pointer hover:border-emerald-500/50 transition-colors">
+                            <input type="checkbox" value="${p.id}" class="co-founder-cb accent-emerald-500 w-3 h-3">
+                            <span class="text-[10px] md:text-xs text-white font-bold">${p.avatar} ${p.name}</span>
+                        </label>
+                    `).join('') || '<span class="text-[10px] text-slate-500 italic px-1 py-1">No hay otros jugadores humanos conectados.</span>'}
+                </div>
+                <p class="text-[8px] text-slate-600 mt-1 uppercase font-bold">El costo y el Dev Snipe se dividirá en partes iguales entre los seleccionados. Las comisiones del token también se repartirán.</p>
             </div>
 
             <div class="pt-1 md:pt-2">
