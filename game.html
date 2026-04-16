@@ -211,6 +211,27 @@ window.handleImageUpload = function(event) {
     reader.readAsDataURL(file);
 };
 
+window.updateLaunchStats = function() {
+    const me = STATE.players[STATE.myProfile.id];
+    let totalBal = me.solBalance;
+    let count = 1;
+    document.querySelectorAll('.co-founder-cb:checked').forEach(cb => {
+        const p = STATE.players[cb.value];
+        if(p) { totalBal += p.solBalance; count++; }
+    });
+    const maxDevBuy = Math.max(0, totalBal - 1);
+    const input = document.getElementById('l-devbuy');
+    const lblMax = document.getElementById('lbl-max-devbuy');
+    if(input) input.max = maxDevBuy;
+    if(lblMax) lblMax.innerText = 'Max: ' + formatUSD(maxDevBuy);
+    
+    const pInfo = document.getElementById('launch-cofounder-info');
+    if(pInfo) {
+        if(count > 1) pInfo.innerHTML = `🤝 Proyecto Co-Fundado (${count} dueños). Poder de compra combinado: <span class="text-emerald-400 font-mono font-black">${formatUSD(totalBal)}</span>. <br>Los tokens y comisiones (fees) se repartirán de manera justa y proporcional al aporte financiero de cada uno.`;
+        else pInfo.innerHTML = `Selecciona socios para unir fuerzas financieras. Beneficios y costos serán distribuidos proporcionalmente al saldo de cada uno.`;
+    }
+};
+
 function saveGame() {
     if(!STATE.roomConfig.isHost) return addToast("Solo el Host puede guardar", "❌");
     const saveData = { players: STATE.players, tokens: STATE.tokens, roomConfig: STATE.roomConfig, chat: STATE.chat, posts: STATE.posts, gameState: STATE.gameState, races: STATE.races };
@@ -423,6 +444,7 @@ function initNetwork(roomId, mode, customBotCount = 50) {
         mqttClient.on('connect', () => {
             tLog("✓ [VPN-SIM] Señalización lista.", "text-emerald-400");
             mqttClient.options.reconnectPeriod = 1000;
+            STATE._connectAttempts = 0;
             
             if (mode === 'host') {
                 mqttClient.subscribe(`dgn/${roomId}/in`);
@@ -440,7 +462,7 @@ function initNetwork(roomId, mode, customBotCount = 50) {
                 if(window.discoveryInterval) clearInterval(window.discoveryInterval);
                 window.discoveryInterval = setInterval(() => {
                     if (STATE.roomConfig.isHost && !STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
-                        mqttClient.publish('dgn_global_discovery_v2', JSON.stringify({
+                        const discPayload = JSON.stringify({
                             code: STATE.roomConfig.code,
                             roomName: STATE.roomConfig.name,
                             hasMap: false,
@@ -448,7 +470,10 @@ function initNetwork(roomId, mode, customBotCount = 50) {
                             players: Object.keys(STATE.players).length,
                             max: STATE.roomConfig.maxPlayers,
                             gameState: STATE.gameState
-                        }));
+                        });
+                        // Publicar en ambos canales para asegurar compatibilidad PC-Teléfono
+                        mqttClient.publish('dgn_global_discovery_v2', discPayload);
+                        mqttClient.publish('dgn_global_discovery', discPayload);
                     }
                 }, 3000);
 
@@ -462,6 +487,16 @@ function initNetwork(roomId, mode, customBotCount = 50) {
                 window.handshakeInterval = setInterval(() => {
                     tLog(`[!] Intentando conectar (Host ocupado o de lejos)...`, "text-orange-400");
                     mqttClient.publish(`dgn/${roomId}/in`, JSON.stringify(joinPacket));
+                    
+                    // Sistema de auto-reparación si la sala "parece vacía" por fallo de Broker
+                    if (STATE.gameState === 'waiting' && STATE.totalPlayerCount <= 1) {
+                        STATE._connectAttempts = (STATE._connectAttempts || 0) + 1;
+                        if (STATE._connectAttempts > 8) {
+                            tLog(`[!] El servidor no responde. Cambiando ruta...`, "text-red-400");
+                            currentBrokerIndex = (currentBrokerIndex + 1) % BROKER_URLS.length;
+                            initNetwork(roomId, mode, customBotCount);
+                        }
+                    }
                 }, 3000);
             }
         });
@@ -789,6 +824,7 @@ function getCompressedState() {
 }
 
 let lastMqttBroadcast = 0;
+let mqttBroadcastTimer = null;
 
 function broadcastState() {
     if (STATE.roomConfig.isHost) {
@@ -804,12 +840,22 @@ function broadcastState() {
             });
         }
 
-        // MQTT Fallback (Ligero) - Limitado a 1 vez por segundo
+        // MQTT Fallback - Sistema de Cola Garantizada (Soluciona acciones perdidas)
         if (!STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
-            if (syncTime - lastMqttBroadcast > 1000) {
+            const timeSinceLast = syncTime - lastMqttBroadcast;
+            
+            if (timeSinceLast > 600) { // Reducido a 600ms para mayor fluidez
                 lastMqttBroadcast = syncTime;
                 const msg = { type: 'STATE_SYNC', time: syncTime, payload: syncPayload };
                 mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify(msg));
+            } else {
+                // Si se limitó por velocidad, programa un envío garantizado
+                if (mqttBroadcastTimer) clearTimeout(mqttBroadcastTimer);
+                mqttBroadcastTimer = setTimeout(() => {
+                    lastMqttBroadcast = Date.now();
+                    const msg = { type: 'STATE_SYNC', time: lastMqttBroadcast, payload: getCompressedState() };
+                    mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify(msg));
+                }, 600 - timeSinceLast);
             }
         }
     }
@@ -969,23 +1015,37 @@ function handleLaunchHost(name, ticker, image, devBuy, playerId, coFounders = []
     const numCreators = creators.length;
     const feePerPerson = 1 / numCreators;
     const actualDevBuy = Math.max(0, devBuy);
-    const devBuyPerPerson = actualDevBuy / numCreators;
-    const totalCostPerPerson = feePerPerson + devBuyPerPerson;
 
-    // Check if all creators have enough balance
+    // Check if all creators have enough balance for the base fee ($1 total shared)
     for (let id of creators) {
-        if (STATE.players[id].solBalance < totalCostPerPerson) {
-            if (id === playerId) hostEmitAlert(playerId, "No tienes suficiente saldo para el lanzamiento.", "❌");
-            else hostEmitAlert(playerId, `El co-fundador ${STATE.players[id].name} no tiene saldo suficiente.`, "❌");
+        if (STATE.players[id].solBalance < feePerPerson) {
+            if (id === playerId) hostEmitAlert(playerId, "No tienes suficiente saldo para la tarifa base compartida ($1).", "❌");
+            else hostEmitAlert(playerId, `El co-fundador ${STATE.players[id].name} está quebrado y no puede pagar su parte del despliegue.`, "❌");
             return;
         }
     }
 
-    // Deduct balances
+    let totalAvailableForBuy = 0;
+    creators.forEach(id => { totalAvailableForBuy += (STATE.players[id].solBalance - feePerPerson); });
+
+    if (actualDevBuy > totalAvailableForBuy) {
+        hostEmitAlert(playerId, `El Snipe del Dev (${formatUSD(actualDevBuy)}) excede el poder de compra combinado (${formatUSD(totalAvailableForBuy)}).`, "❌");
+        return;
+    }
+
+    // Calcular distribución proporcional
+    const contributions = {};
     creators.forEach(id => {
-        STATE.players[id].solBalance -= totalCostPerPerson;
+        const available = STATE.players[id].solBalance - feePerPerson;
+        // El aporte es directamente proporcional al dinero disponible de cada uno
+        const shareOfBuy = actualDevBuy > 0 ? (available / totalAvailableForBuy) * actualDevBuy : 0;
+        const sharePct = actualDevBuy > 0 ? (shareOfBuy / actualDevBuy) : (1 / numCreators);
+        
+        STATE.players[id].solBalance -= (feePerPerson + shareOfBuy);
         STATE.players[id].reputation = Math.min(100, (STATE.players[id].reputation || 1) + 0.5);
         STATE.players[id].followers += 10;
+        
+        contributions[id] = { cost: feePerPerson + shareOfBuy, share: sharePct };
     });
     
     // Logica AMM Realista: La inversión del dev añade a la liquidez virtual base (x3)
@@ -994,28 +1054,42 @@ function handleLaunchHost(name, ticker, image, devBuy, playerId, coFounders = []
     const initialPrice = vSol / 1000000000; 
     
     const tokenId = ticker.toUpperCase() + '_' + Date.now();
-    
     const creatorNames = creators.map(id => STATE.players[id].name).join(', ');
 
     STATE.tokens[tokenId] = {
         id: tokenId, name, ticker: ticker.toUpperCase(), image: image, 
         creatorId: playerId, creatorIds: creators, creatorName: creatorNames,
+        coFounders: contributions, // Guardar historial de aportes para las fees
         solPool: vSol, tokenPool: 1000000000, initialSupply: 1000000000, createdAt: Date.now(),
         virtualSol: vSol, curveLimit: cLim,
         milestones: {}, history: [], exchange: 'Pump.fun', accumulatedFees: 0, totalFeesEarned: 0,
         currentCandle: { time: Date.now(), open: initialPrice, high: initialPrice, low: initialPrice, close: initialPrice, vol: 0 }
     };
     
-    const logMsg = `🚀 ${creatorNames} lanzaron $${STATE.tokens[tokenId].ticker}`;
+    const logMsg = `🚀 ${creatorNames} lanzaron $${STATE.tokens[tokenId].ticker} ${numCreators > 1 ? '(Multi-Firma 🤝)' : ''}`;
     STATE.chat.unshift({ id: Date.now(), sender: 'System', text: logMsg, sys: true });
     STATE.chat = STATE.chat.slice(0, 80);
     
     creators.forEach(id => hostEmitAlert(id, logMsg, '🚀'));
     
     if (actualDevBuy > 0) {
+        const tokensOut = calcTokensOut(actualDevBuy, STATE.tokens[tokenId].solPool, STATE.tokens[tokenId].tokenPool);
+        STATE.tokens[tokenId].solPool += actualDevBuy; 
+        STATE.tokens[tokenId].tokenPool -= tokensOut;
+        
+        // Repartir tokens proporcionalmente a los creadores
         creators.forEach(id => {
-            handleTradeHost(tokenId, true, devBuyPerPerson, id, false);
+            const pTokens = tokensOut * contributions[id].share;
+            if(pTokens > 0) {
+                STATE.players[id].portfolio[tokenId] = (STATE.players[id].portfolio[tokenId] || 0) + pTokens;
+                if(!STATE.players[id].tradesInfo) STATE.players[id].tradesInfo = {};
+                STATE.players[id].tradesInfo[tokenId] = { entryPrice: initialPrice };
+            }
         });
+        
+        const newPrice = getPrice(STATE.tokens[tokenId].solPool, STATE.tokens[tokenId].tokenPool);
+        STATE.tokens[tokenId].currentCandle.close = newPrice;
+        STATE.tokens[tokenId].currentCandle.high = Math.max(STATE.tokens[tokenId].currentCandle.high, newPrice);
     }
     
     broadcastState();
@@ -1080,12 +1154,15 @@ function handleClaimFeesHost(tokenId, playerId) {
     if(!token || !player || !creators.includes(playerId) || token.accumulatedFees <= 0) return;
 
     const claimAmtTotal = token.accumulatedFees;
-    const claimAmtPerPerson = claimAmtTotal / creators.length;
 
     creators.forEach(id => {
         if (STATE.players[id]) {
-            STATE.players[id].solBalance += claimAmtPerPerson;
-            hostEmitAlert(id, `Has reclamado ${formatUSD(claimAmtPerPerson)} en Fees del exchange ($${token.ticker}).`, "💰");
+            const share = token.coFounders ? token.coFounders[id].share : (1 / creators.length);
+            const amt = claimAmtTotal * share;
+            if(amt > 0) {
+                STATE.players[id].solBalance += amt;
+                hostEmitAlert(id, `Has reclamado ${formatUSD(amt)} en Fees ($${token.ticker}).`, "💰");
+            }
         }
     });
 
@@ -1103,23 +1180,26 @@ function handleClaimAllFeesHost(playerId) {
         const creators = t.creatorIds || [t.creatorId];
         if(creators.includes(playerId) && t.accumulatedFees > 0) {
             const claimAmtTotal = t.accumulatedFees;
-            const claimAmtPerPerson = claimAmtTotal / creators.length;
 
             creators.forEach(id => {
                 if (STATE.players[id]) {
-                    STATE.players[id].solBalance += claimAmtPerPerson;
-                    if (id !== playerId) hostEmitAlert(id, `Has recibido ${formatUSD(claimAmtPerPerson)} en Fees ($${t.ticker}).`, "💰");
+                    const share = t.coFounders ? t.coFounders[id].share : (1 / creators.length);
+                    const amt = claimAmtTotal * share;
+                    if(amt > 0) {
+                        STATE.players[id].solBalance += amt;
+                        if (id !== playerId) hostEmitAlert(id, `Has recibido ${formatUSD(amt)} en Fees ($${t.ticker}).`, "💰");
+                        if (id === playerId) totalClaimedForMe += amt;
+                    }
                 }
             });
 
-            totalClaimedForMe += claimAmtPerPerson;
             t.totalFeesEarned = (t.totalFeesEarned || 0) + claimAmtTotal;
             t.accumulatedFees = 0;
         }
     });
 
     if(totalClaimedForMe > 0) {
-        hostEmitAlert(playerId, `Has reclamado un total de ${formatUSD(totalClaimedForMe)} en Fees.`, "💰");
+        hostEmitAlert(playerId, `Has reclamado tu parte de ${formatUSD(totalClaimedForMe)} en Fees.`, "💰");
         broadcastState();
     } else {
         hostEmitAlert(playerId, `No tienes fees para reclamar actualmente.`, "❌");
@@ -1753,8 +1833,11 @@ function UpdateDevPanelDynamic() {
     myTokens.forEach(t => {
         const vRes = t.virtualSol || VIRTUAL_USD_RESERVE;
         const cLim = t.curveLimit || BONDING_CURVE_LIMIT;
+        
         const creatorsCount = t.creatorIds ? t.creatorIds.length : 1;
-        totalFees += ((t.totalFeesEarned || 0) + (t.accumulatedFees || 0)) / creatorsCount;
+        const share = t.coFounders && t.coFounders[STATE.myProfile.id] ? t.coFounders[STATE.myProfile.id].share : (1/creatorsCount);
+        
+        totalFees += ((t.totalFeesEarned || 0) + (t.accumulatedFees || 0)) * share;
         
         const progress = Math.min(100, ((t.solPool - vRes) / cLim) * 100);
         if(progress >= 100) successfulTokens++;
@@ -1773,9 +1856,12 @@ function UpdateDevPanelDynamic() {
 
     grid.innerHTML = myTokens.map(token => {
         const mcap = getPrice(token.solPool, token.tokenPool) * token.initialSupply;
+        
         const creatorsCount = token.creatorIds ? token.creatorIds.length : 1;
-        const feesToClaim = (token.accumulatedFees || 0) / creatorsCount;
-        const totalEarned = (token.totalFeesEarned || 0) / creatorsCount;
+        const share = token.coFounders && token.coFounders[STATE.myProfile.id] ? token.coFounders[STATE.myProfile.id].share : (1/creatorsCount);
+        
+        const feesToClaim = (token.accumulatedFees || 0) * share;
+        const totalEarned = (token.totalFeesEarned || 0) * share;
 
         return `
         <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row justify-between gap-4 shadow-inner">
@@ -1787,7 +1873,7 @@ function UpdateDevPanelDynamic() {
                 </div>
             </div>
             <div class="flex flex-col justify-center items-end bg-slate-900 p-2 px-3 rounded-xl border border-slate-800">
-                <div class="text-[9px] text-slate-500 uppercase font-bold tracking-widest">Fees Pendientes</div>
+                <div class="text-[9px] text-slate-500 uppercase font-bold tracking-widest">Fees Pendientes (Tu Parte)</div>
                 <div class="font-mono font-black text-emerald-400 text-lg">${formatUSD(feesToClaim)}</div>
                 ${feesToClaim > 0 ? `<button onclick="dispatchAction('ACTION_CLAIM_FEES', {tokenId: '${token.id}'});" class="text-[8px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded uppercase mt-1 hover:bg-emerald-500/40 border border-emerald-500/30 transition-colors">Reclamar</button>` : `<div class="text-[8px] text-slate-600 uppercase mt-1">Histórico: ${formatUSD(totalEarned)}</div>`}
             </div>
@@ -2639,29 +2725,29 @@ function RenderLaunch() {
             </div>
 
             <div>
-                <label class="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 md:mb-2 block">Co-Fundadores (Opcional - Jugadores Reales)</label>
+                <label class="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 md:mb-2 block">Co-Fundadores (Multi-Firma 🤝)</label>
                 <div class="flex flex-wrap gap-2 max-h-24 overflow-y-auto bg-slate-950 p-2 rounded-xl border border-slate-800">
                     ${Object.values(STATE.players).filter(p => !p.isBot && p.id !== STATE.myProfile.id).map(p => `
                         <label class="flex items-center gap-2 bg-slate-900 px-2 py-1.5 rounded-lg border border-slate-700 cursor-pointer hover:border-emerald-500/50 transition-colors">
-                            <input type="checkbox" value="${p.id}" class="co-founder-cb accent-emerald-500 w-3 h-3">
+                            <input type="checkbox" value="${p.id}" class="co-founder-cb accent-emerald-500 w-3 h-3" onchange="window.updateLaunchStats()">
                             <span class="text-[10px] md:text-xs text-white font-bold">${p.avatar} ${p.name}</span>
                         </label>
                     `).join('') || '<span class="text-[10px] text-slate-500 italic px-1 py-1">No hay otros jugadores humanos conectados.</span>'}
                 </div>
-                <p class="text-[8px] text-slate-600 mt-1 uppercase font-bold">El costo y el Dev Snipe se dividirá en partes iguales entre los seleccionados. Las comisiones del token también se repartirán.</p>
+                <p id="launch-cofounder-info" class="text-[8px] text-slate-600 mt-1 uppercase font-bold">Selecciona socios para unir fuerzas financieras. Beneficios y costos serán distribuidos proporcionalmente al saldo de cada uno.</p>
             </div>
 
             <div class="pt-1 md:pt-2">
-                <label class="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 md:mb-2 flex justify-between"><span>Snipe del Dev (Opcional)</span> <span class="text-emerald-400">Max: ${formatUSD(maxDevBuy)}</span></label>
+                <label class="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 md:mb-2 flex justify-between"><span>Snipe del Dev Combinado</span> <span id="lbl-max-devbuy" class="text-emerald-400">Max: ${formatUSD(maxDevBuy)}</span></label>
                 <input id="l-devbuy" type="number" step="0.01" min="0" max="${maxDevBuy}" placeholder="USD" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 md:px-4 py-3 md:py-3.5 text-emerald-400 font-mono text-base md:text-lg focus:border-emerald-500 outline-none transition-colors" />
-                <p class="text-[8px] text-slate-600 mt-1 uppercase font-bold">Puedes invertir el capital que desees. El AMM ajustará la liquidez virtual según tu inversión para evitar que el supply se agote de golpe y darle una gráfica realista.</p>
+                <p class="text-[8px] text-slate-600 mt-1 uppercase font-bold">El AMM usará este capital de todos los fundadores combinados para comprar tokens iniciales. A más dinero conjunto, mayor distribución.</p>
             </div>
             <div class="bg-slate-950 p-4 md:p-5 rounded-xl border border-slate-800 text-[10px] md:text-sm space-y-1.5 md:space-y-2 mt-3 md:mt-4 shadow-inner">
-                <div class="flex justify-between font-bold text-slate-400 uppercase tracking-wider"><span>Costo (Fijo):</span><span class="font-mono text-white">$1.00</span></div>
-                <div class="flex justify-between font-black text-emerald-400 pt-2.5 md:pt-3 border-t border-slate-800/50 mt-2.5 md:mt-3 uppercase tracking-wider"><span>Total Mínimo:</span><span class="font-mono">$1.00</span></div>
+                <div class="flex justify-between font-bold text-slate-400 uppercase tracking-wider"><span>Costo Base (Fijo):</span><span class="font-mono text-white">$1.00</span></div>
+                <div class="flex justify-between font-black text-emerald-400 pt-2.5 md:pt-3 border-t border-slate-800/50 mt-2.5 md:mt-3 uppercase tracking-wider"><span>Total Mínimo a Repartir:</span><span class="font-mono">$1.00</span></div>
             </div>
             <div class="flex flex-col sm:flex-row gap-2 md:gap-3 pt-3 md:pt-4">
-                <button type="submit" class="w-full sm:flex-1 bg-emerald-500 text-slate-950 font-black py-3 md:py-4 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:bg-emerald-400 transition-all text-sm md:text-base tracking-widest uppercase order-1 sm:order-2">Lanzar</button>
+                <button type="submit" class="w-full sm:flex-1 bg-emerald-500 text-slate-950 font-black py-3 md:py-4 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:bg-emerald-400 transition-all text-sm md:text-base tracking-widest uppercase order-1 sm:order-2">Lanzar Co-Firma</button>
                 <button type="button" onclick="switchTab('market');" class="w-full sm:w-auto px-6 bg-slate-800 text-white font-bold py-3 md:py-0 rounded-xl hover:bg-slate-700 transition-colors uppercase tracking-widest text-[10px] md:text-xs order-2 sm:order-1">Cancelar</button>
             </div>
         </form>
@@ -2848,7 +2934,10 @@ window.onload = () => {
         return;
     }
 
-    const code = urlParams.get('code');
+    // Normalización de código para evitar problemas de minúsculas o espacios
+    let codeParam = urlParams.get('code') || urlParams.get('room');
+    const code = codeParam ? codeParam.trim().toUpperCase() : null;
+    
     const isHost = urlParams.get('host') === 'true';
     const isOffline = urlParams.get('offline') === 'true';
 
