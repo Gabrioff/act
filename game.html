@@ -325,7 +325,7 @@ const WEBRTC_CONFIG = {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478?transport=udp' }
+            { urls: 'stun:stun.services.mozilla.com' }
         ]
     }
 };
@@ -383,7 +383,8 @@ window.adjustBots = function(targetCount) {
 
 const BROKER_URLS = [
     'wss://broker.emqx.io:8084/mqtt',      
-    'wss://broker.hivemq.com:8884/mqtt'  
+    'wss://broker.hivemq.com:8884/mqtt',   
+    'wss://test.mosquitto.org:8081/mqtt'   
 ];
 let currentBrokerIndex = 0;
 
@@ -393,9 +394,7 @@ function setupSystemBots() {
     if(!STATE.players['SYSTEM_BINANCE']) STATE.players['SYSTEM_BINANCE'] = { id: 'SYSTEM_BINANCE', name: 'Binance', avatar: '🔶', isBot: true, isVerified: true, solBalance: 9999999, portfolio: {}, reputation: 100, solStaked: 0, followers: 2000000 };
 }
 
-function initNetwork(rawRoomId, mode, customBotCount = 50) {
-    const roomId = String(rawRoomId).trim().toUpperCase(); // Forzar mayúsculas para evitar desconexiones
-    
+function initNetwork(roomId, mode, customBotCount = 50) {
     if (peer && peer.destroy) { peer.destroy(); peer = null; }
     if(mqttClient && mode === 'offline') { mqttClient.end(); mqttClient = null; }
     STATE.netLogs = []; 
@@ -441,7 +440,7 @@ function initNetwork(rawRoomId, mode, customBotCount = 50) {
                 if(window.discoveryInterval) clearInterval(window.discoveryInterval);
                 window.discoveryInterval = setInterval(() => {
                     if (STATE.roomConfig.isHost && !STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
-                        const discoveryPayload = JSON.stringify({
+                        mqttClient.publish('dgn_global_discovery_v2', JSON.stringify({
                             code: STATE.roomConfig.code,
                             roomName: STATE.roomConfig.name,
                             hasMap: false,
@@ -449,9 +448,7 @@ function initNetwork(rawRoomId, mode, customBotCount = 50) {
                             players: Object.keys(STATE.players).length,
                             max: STATE.roomConfig.maxPlayers,
                             gameState: STATE.gameState
-                        });
-                        mqttClient.publish('dgn_global_discovery', discoveryPayload);
-                        mqttClient.publish('dgn_global_discovery_v2', discoveryPayload);
+                        }));
                     }
                 }, 3000);
 
@@ -463,9 +460,9 @@ function initNetwork(rawRoomId, mode, customBotCount = 50) {
                 
                 if(window.handshakeInterval) clearInterval(window.handshakeInterval);
                 window.handshakeInterval = setInterval(() => {
-                    tLog(`[!] Reintentando conexión P2P (Host ocupado)...`, "text-orange-400");
+                    tLog(`[!] Intentando conectar (Host ocupado o de lejos)...`, "text-orange-400");
                     mqttClient.publish(`dgn/${roomId}/in`, JSON.stringify(joinPacket));
-                }, 2000);
+                }, 3000);
             }
         });
 
@@ -508,20 +505,10 @@ function initNetwork(rawRoomId, mode, customBotCount = 50) {
                         if (data.type === 'PING') { conn.send({ type: 'PONG', target: data.senderId, time: data.time }); return; }
                         processMessageAsHost(data);
                     });
-                    conn.on('error', (err) => tLog("Error P2P cliente: " + err, "text-yellow-400"));
                 });
                 peer.on('call', call => {
                     if (window.localAudioStream) call.answer(window.localAudioStream); else call.answer(); 
                     call.on('stream', remoteStream => playAudioStream(remoteStream, call.peer));
-                });
-                peer.on('error', (err) => {
-                    tLog("Error WebRTC Servidor: " + err.type, "text-red-400");
-                    if (err.type === 'unavailable-id') {
-                        // Si el host recarga, el ID antiguo sigue trabado. Generamos uno aleatorio de respaldo.
-                        peer.destroy();
-                        peer = new Peer(WEBRTC_CONFIG);
-                        peer.on('open', (id) => { STATE.myProfile.peerId = id; STATE.roomConfig.hostPeerId = id; broadcastState(); tLog("✓ Servidor P2P de respaldo activado", "text-emerald-400"); });
-                    }
                 });
             } else {
                 peer = new Peer(WEBRTC_CONFIG);
@@ -530,7 +517,6 @@ function initNetwork(rawRoomId, mode, customBotCount = 50) {
                     if (window.localAudioStream) call.answer(window.localAudioStream); else call.answer(); 
                     call.on('stream', remoteStream => playAudioStream(remoteStream, call.peer));
                 });
-                peer.on('error', (err) => tLog("Error WebRTC Cliente: " + err.type, "text-red-400"));
             }
         } catch(e) { tLog("Servicio WebRTC no disponible.", "text-slate-500"); }
     }
@@ -731,14 +717,13 @@ function processMessageAsClient(data) {
 
         if (payload.hostPeerId && (!window.dataConn || !window.dataConn.open)) {
             try {
-                window.dataConn = peer.connect(payload.hostPeerId, { reliable: true, serialization: 'json' });
+                window.dataConn = peer.connect(payload.hostPeerId);
                 window.dataConn.on('open', () => { 
                     tLog("⚡ Conexión P2P Directa Establecida (Latencia 0ms)", "text-cyan-400"); 
                     window.dataConn.send({ type: 'P2P_HELLO', senderId: STATE.myProfile.id });
                 });
                 window.dataConn.on('data', (data) => processMessageAsClient(data));
-                window.dataConn.on('error', (err) => tLog("Error flujo P2P: " + err, "text-red-400"));
-            } catch(e) { tLog("Fallo de instanciación P2P: " + e.message, "text-red-400"); }
+            } catch(e) {}
         }
     }
     
@@ -779,7 +764,7 @@ function getCompressedState() {
     });
 
     bots.sort((a,b) => (b.solBalance + (b.solStaked||0)) - (a.solBalance + (a.solStaked||0)));
-    const topBots = bots.slice(0, 50); // Reducido a 50 para evitar límite de payload de MQTT
+    const topBots = bots.slice(0, 70); 
     
     const compressedPlayers = { ...humans };
     topBots.forEach(b => compressedPlayers[b.id] = b);
@@ -788,15 +773,15 @@ function getCompressedState() {
     Object.values(STATE.tokens).forEach(t => {
         compressedTokens[t.id] = {
             ...t,
-            history: t.history ? t.history.slice(-15) : [] // Límite de velas estricto
+            history: t.history ? t.history.slice(-25) : [] 
         };
     });
 
     return { 
         players: compressedPlayers, 
         tokens: compressedTokens, 
-        chat: STATE.chat.slice(0, 20), 
-        posts: STATE.posts.slice(0, 20), 
+        chat: STATE.chat.slice(0, 30), 
+        posts: STATE.posts.slice(0, 30), 
         races: STATE.races,
         gameState: STATE.gameState,
         totalPlayerCount: Object.keys(STATE.players).length
@@ -2864,8 +2849,7 @@ window.onload = () => {
         return;
     }
 
-    // Normalizar ID y código para evitar errores de mayúsculas o links rotos
-    let code = (urlParams.get('code') || urlParams.get('room') || '').trim().toUpperCase();
+    const code = urlParams.get('code') || urlParams.get('room');
     const isHost = urlParams.get('host') === 'true';
     const isOffline = urlParams.get('offline') === 'true';
 
