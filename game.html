@@ -984,13 +984,14 @@ function calculateHypeMultiplier(tokenTicker) {
     let hype = 1.0;
     STATE.posts.slice(0, 30).forEach(p => {
         if(p.text.includes(`$${tokenTicker}`)) {
-            const author = STATE.players[p.authorId];
-            if(author && author.followers > 0) {
-                hype += (author.followers / 20000); 
-            }
+            // El FOMO escala directamente con las VISITAS del post.
+            const views = p.views || 0;
+            // Cada 1,000 visitas suma 1.0 al hype. Un post con 10,000 vistas genera un FOMO x10.
+            hype += (views / 1000); 
         }
     });
-    return Math.min(hype, 5.0); 
+    // Límite subido drásticamente (hasta x100) para permitir que un post ultra-viral rompa el mercado
+    return Math.min(hype, 100.0); 
 }
 
 function handlePostHost(text, playerId) {
@@ -1583,16 +1584,20 @@ let baseProb = isHighlyTrusted ? 0.2 : 0.01;
                     const realLiquidity = t.solPool - vRes;
                     const currentVol = t.currentCandle ? t.currentCandle.vol : 0;
                     
-                    // Si no hay volumen fuerte (>$80) o la liquidez es baja, el 99.9% de los bots ignoran el token.
-                    if (currentVol < 80 || realLiquidity < 40) {
+                    // SHILL OVERRIDE: Si el token está siendo fuertemente promocionado (Hype > 5 por vistas en DegenX)
+                    const isViralShill = hypeMulti > 5.0;
+
+                    // Si no hay volumen fuerte o liquidez baja, ignoran el token... A MENOS que sea viral en DegenX.
+                    if ((currentVol < 80 || realLiquidity < 40) && !isViralShill) {
                         baseProb = 0.0001; 
-                        if (!t.dexScreener) return false; // Si no tiene Dex pagado, ni lo miran sin volumen fuerte.
+                        if (!t.dexScreener) return false; // Sin Dex o sin hype viral, no entran.
                     }
 
-                    // No compran si el token está "muerto" (menos de 5 trades registrados en su historia visible)
+                    // No compran si el token está "muerto" (menos de 5 trades) y tampoco es viral
                     const activity = (t.history || []).slice(-10).filter(c => c.vol > 0).length;
-                    if (activity < 5 && !isHighlyTrusted) return false; // Exigen constancia de transacciones.
+                    if (activity < 5 && !isHighlyTrusted && !isViralShill) return false;
 
+                    // El hypeMultiplier multiplica la probabilidad base. Si es muy alto, compran guiados por FOMO.
                     if (Math.random() > (baseProb * hypeMulti)) return false;
 
                     if (bot.strategy === 'Scalper') return (t.solPool - vRes) > 2; 
