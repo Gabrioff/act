@@ -243,11 +243,43 @@ function saveGame() {
 
 function loadGameFromStorage() {
     try {
-        const loaded = JSON.parse(sessionStorage.getItem('degen_savegame') || localStorage.getItem('degen_autosave'));
+        const rawData = sessionStorage.getItem('degen_savegame') || localStorage.getItem('degen_autosave');
+        if (!rawData) {
+            addToast("No hay partida guardada.", "❌");
+            setTimeout(()=>window.location.href='index.html', 2000);
+            return;
+        }
+        
+        const loaded = JSON.parse(rawData);
         if(loaded && loaded.players && loaded.roomConfig) {
-            STATE.players = loaded.players; STATE.tokens = loaded.tokens || {};
-            STATE.roomConfig = loaded.roomConfig; STATE.chat = loaded.chat || []; STATE.posts = loaded.posts || []; STATE.gameState = loaded.gameState || 'waiting';
+            STATE.players = loaded.players; 
+            STATE.tokens = loaded.tokens || {};
+            STATE.roomConfig = loaded.roomConfig; 
+            STATE.chat = loaded.chat || []; 
+            STATE.posts = loaded.posts || []; 
+            STATE.gameState = loaded.gameState || 'waiting';
             STATE.races = loaded.races || {};
+            
+            // --- PARCHE DE COMPATIBILIDAD (Migración de partidas viejas) ---
+            Object.values(STATE.players).forEach(p => {
+                if (p.isBot && !p.initialBalance) p.initialBalance = Math.max(p.solBalance || 50, 50);
+                if (!p.portfolio) p.portfolio = {};
+                if (!p.tradesInfo) p.tradesInfo = {};
+                if (!p.luxuries) p.luxuries = [];
+                if (p.followers === undefined) p.followers = 0;
+                if (p.reputation === undefined) p.reputation = 1;
+            });
+            
+            Object.values(STATE.tokens).forEach(t => {
+                if (!t.history) t.history = [];
+                if (!t.initialSupply) t.initialSupply = 1000000000;
+                if (!t.currentCandle) {
+                    const cp = t.tokenPool > 0 ? (t.solPool / t.tokenPool) : 0.00002;
+                    t.currentCandle = { time: Date.now(), open: cp, high: cp, low: cp, close: cp, vol: 0 };
+                }
+            });
+            // ---------------------------------------------------------------
+
             STATE.totalPlayerCount = Object.keys(STATE.players).length;
             
             const hostProfile = Object.values(STATE.players).find(p => !p.isBot) || STATE.players[Object.keys(STATE.players)[0]];
@@ -257,9 +289,17 @@ function loadGameFromStorage() {
             initNetwork(STATE.roomConfig.code, mode, STATE.roomConfig.botCount);
             
             STATE.route = STATE.gameState === 'playing' ? 'game' : 'lobby';
-            addToast("Partida restaurada", "✅"); requestUIRender(true);
-        } else { addToast("No se encontraron datos.", "❌"); setTimeout(()=>window.location.href='index.html', 2000); }
-    } catch(err) { addToast("Error leyendo archivo.", "❌"); setTimeout(()=>window.location.href='index.html', 2000); }
+            addToast("Partida restaurada", "✅"); 
+            requestUIRender(true);
+        } else { 
+            addToast("Datos corruptos o formato antiguo.", "❌"); 
+            setTimeout(()=>window.location.href='index.html', 2000); 
+        }
+    } catch(err) { 
+        console.error("Error al cargar la partida:", err); // Para ver el error exacto en consola por si acaso
+        addToast("Error leyendo archivo.", "❌"); 
+        setTimeout(()=>window.location.href='index.html', 2000); 
+    }
 }
 
 // ==========================================
@@ -1509,17 +1549,77 @@ function startBotBrain() {
         const activeBots = botList.sort(() => 0.5 - Math.random()).slice(0, activeCount);
         let didTrade = false;
 
-        activeBots.forEach(bot => {
+       activeBots.forEach(bot => {
             Object.keys(bot.portfolio).forEach(tokenId => {
                 const amount = bot.portfolio[tokenId]; if (amount <= 0) return;
                 const token = STATE.tokens[tokenId]; if (!token) return;
+                
                 const currentPrice = getPrice(token.solPool, token.tokenPool);
                 const entryPrice = bot.tradesInfo?.[tokenId]?.entryPrice || currentPrice;
                 const pnlPercent = ((currentPrice - entryPrice) / entryPrice) * 100;
                 let sellRatio = 0;
-                if (pnlPercent <= -20 && bot.strategy !== 'Hodler') sellRatio = 1.0;
-                else if (pnlPercent >= 50) sellRatio = 0.5;
-                if (sellRatio > 0) { handleTradeHost(tokenId, false, amount * sellRatio, bot.id, true); didTrade = true; }
+                
+                // --- LÓGICA AVANZADA DE ESTRATEGIAS DE VENTA ---
+                switch(bot.strategy) {
+                    case 'Scalper':
+                        // Toma ganancias súper rápido (+10%), corta pérdidas rápido (-5%)
+                        if (pnlPercent >= 10) sellRatio = 0.5; 
+                        if (pnlPercent >= 20) sellRatio = 1.0; 
+                        if (pnlPercent <= -5) sellRatio = 1.0; 
+                        break;
+                    case 'PaperHands':
+                        // Manos de papel: Vende con cualquier profit mínimo y entra en pánico en rojo
+                        if (pnlPercent >= 5) sellRatio = 1.0; 
+                        if (pnlPercent <= -2) sellRatio = 1.0; 
+                        break;
+                    case 'Whale':
+                        // Ballenas: Escalan sus ventas poco a poco para no destruir la gráfica
+                        if (pnlPercent >= 30) sellRatio = 0.2; 
+                        if (pnlPercent >= 100) sellRatio = 0.5;
+                        if (pnlPercent <= -30) sellRatio = 0.5; 
+                        break;
+                    case 'Degen':
+                        // Degens: "Diamond hands". Buscan el x2 (+100%) o mueren holdeando (-80%)
+                        if (pnlPercent >= 100) sellRatio = 0.5; 
+                        if (pnlPercent <= -80) sellRatio = 1.0; 
+                        break;
+                    case 'Sniper':
+                        // Entran rápido y salen con buen profit
+                        if (pnlPercent >= 50) sellRatio = 1.0; 
+                        if (pnlPercent <= -15) sellRatio = 1.0;
+                        break;
+                    case 'Hodler':
+                        // Nunca venden en pérdida. Solo toman ganancia si hacen un x5 (+400%)
+                        if (pnlPercent >= 400) sellRatio = 0.25; 
+                        break;
+                    case 'RugPuller':
+                        // Dumpers tóxicos: Si ven 25% de profit, hay 30% de chance de que tiren TODO
+                        if (pnlPercent >= 25 && Math.random() < 0.3) sellRatio = 1.0; 
+                        if (pnlPercent <= -15) sellRatio = 1.0;
+                        break;
+                    default: 
+                        // Estrategia estándar (CopyTrader, VolumeSniper)
+                        if (pnlPercent >= 40) sellRatio = 0.5;
+                        if (pnlPercent <= -20) sellRatio = 1.0;
+                        break;
+                }
+
+                // Ejecutar la venta con un factor humano (probabilidad del 80% de actuar en este tick)
+                // y protección anti-crash para que no destruyan la liquidez de un solo golpe.
+                if (sellRatio > 0 && Math.random() < 0.8) { 
+                    let dumpAmount = amount * sellRatio;
+                    const estUsdValue = (dumpAmount / token.tokenPool) * token.solPool;
+                    const maxSafeDumpUsd = token.solPool * 0.3; // Una ballena no puede drenar más del 30% de la pool de un golpe
+                    
+                    if (estUsdValue > maxSafeDumpUsd) {
+                        dumpAmount = dumpAmount * (maxSafeDumpUsd / estUsdValue);
+                    }
+                    
+                    if(dumpAmount > 0) {
+                        handleTradeHost(tokenId, false, dumpAmount, bot.id, true); 
+                        didTrade = true;
+                    }
+                }
             });
 
             if (bot.solBalance > 0.5 && tokenKeys.length > 0 && Math.random() < 0.3) {
