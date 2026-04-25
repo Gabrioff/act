@@ -387,9 +387,9 @@ window.adjustBots = function(targetCount) {
             else { startBal = 20 + Math.random() * 30; } // Scalper, Hodler
             
             const id = `bot_${Date.now()}_${Math.random().toString(36).substr(2,5)}`;
-            STATE.players[id] = { 
+           STATE.players[id] = { 
                 id: id, name: `${strategy}_Bot${startIndex + i}`, avatar: '🤖', 
-                solBalance: startBal, portfolio: {}, isBot: true, strategy: strategy,
+                solBalance: startBal, initialBalance: startBal, portfolio: {}, isBot: true, strategy: strategy,
                 reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0, followers: botFollowers,
                 carTuning: { speedLevel: 1, accelLevel: 1 }
             };
@@ -587,6 +587,64 @@ function startHostAutoSave() {
 // ---------------- EVENTOS DEL SISTEMA Y BOT BRAIN ----------------
 function startSystemEvents() {
     if (!STATE.roomConfig.isHost) return;
+
+    if (window.userBotInterval) clearInterval(window.userBotInterval);
+    window.userBotInterval = setInterval(() => {
+        if (STATE.gameState !== 'playing') return;
+        let changed = false;
+        Object.values(STATE.players).forEach(p => {
+            // 1. Chequear SL y TP
+            if (p.tradesInfo) {
+                Object.keys(p.tradesInfo).forEach(tid => {
+                    const tInfo = p.tradesInfo[tid];
+                    const token = STATE.tokens[tid];
+                    const bal = p.portfolio[tid] || 0;
+                    if (token && bal > 0) {
+                        const curP = getPrice(token.solPool, token.tokenPool);
+                        const pnlPct = ((curP - tInfo.entryPrice) / tInfo.entryPrice) * 100;
+                        if (tInfo.tp && pnlPct >= tInfo.tp) {
+                            handleTradeHost(tid, false, bal, p.id, false); changed = true;
+                            hostEmitAlert(p.id, `Take Profit ejecutado en $${token.ticker} (+${pnlPct.toFixed(1)}%)`, "✅");
+                        } else if (tInfo.sl && pnlPct <= -Math.abs(tInfo.sl)) {
+                            handleTradeHost(tid, false, bal, p.id, false); changed = true;
+                            hostEmitAlert(p.id, `Stop Loss ejecutado en $${token.ticker} (${pnlPct.toFixed(1)}%)`, "⚠️");
+                        }
+                    }
+                });
+            }
+            // 2. Bot de Volumen (Comprar y Vender cíclicamente)
+          // 2. Bot de Volumen Inteligente (Comprar y Vender usando la Billetera Sombra)
+            if (p.volBots) {
+                Object.keys(p.volBots).forEach(tid => {
+                    const vb = p.volBots[tid];
+                    const token = STATE.tokens[tid];
+                    if (vb && vb.active && token) {
+                        const shadow = STATE.players[vb.shadowId];
+                        if (!shadow) return;
+
+                        if (vb.state === 'buy') {
+                            // El bot invierte entre el 30% y 60% de su saldo actual por compra
+                            const buyAmt = shadow.solBalance * (0.3 + Math.random() * 0.3);
+                            if (shadow.solBalance > 1 && buyAmt > 0.5) {
+                                handleTradeHost(tid, true, buyAmt, shadow.id, true);
+                                changed = true;
+                            } else {
+                                vb.state = 'sell'; // No tiene USD, hora de vender los tokens ganados
+                            }
+                        } else if (vb.state === 'sell') {
+                            const bal = shadow.portfolio[tid] || 0;
+                            if (bal > 0) {
+                                handleTradeHost(tid, false, bal, shadow.id, true); // Vende todo su portafolio
+                                changed = true;
+                            }
+                            vb.state = 'buy'; // Vuelve a comprar en el próximo ciclo
+                        }
+                    }
+                });
+            }
+        });
+        if (changed) broadcastState();
+    }, 2000);
     
     if (newsInterval) clearInterval(newsInterval);
     newsInterval = setInterval(() => {
@@ -673,9 +731,65 @@ function processMessageAsHost(data) {
     }
     
     if (type === 'ACTION_TRADE') { handleTradeHost(payload.tokenId, payload.isBuy, payload.amount, senderId); broadcastState(); }
+    if (type === 'ACTION_SET_SLTP') {
+        const player = STATE.players[senderId];
+        if(player && player.tradesInfo && player.tradesInfo[payload.tokenId]) {
+            player.tradesInfo[payload.tokenId][payload.type] = payload.value ? parseFloat(payload.value) : null;
+            broadcastState();
+        }
+    }
+    if (type === 'ACTION_TOGGLE_VOLBOT') {
+        const p = STATE.players[senderId];
+        const tid = payload.tokenId;
+        if(p && STATE.tokens[tid]) {
+            if(!p.volBots) p.volBots = {};
+            const shadowId = 'VOL_' + p.id + '_' + tid;
+
+            if(p.volBots[tid] && p.volBots[tid].active) {
+                // DETENER Y RETIRAR
+                const shadow = STATE.players[shadowId];
+                if (shadow) {
+                    const botTokens = shadow.portfolio[tid] || 0;
+                    if (botTokens > 0) handleTradeHost(tid, false, botTokens, shadowId, true); // Vende todo lo del bot
+                    p.solBalance += shadow.solBalance; // Devuelve USD al jugador principal
+                    shadow.solBalance = 0;
+                }
+                p.volBots[tid].active = false;
+                hostEmitAlert(p.id, `Bot detenido. Fondos y ganancias devueltos a tu cuenta principal.`, "🤖");
+            } else {
+                // INICIAR
+                const amt = parseFloat(payload.amount);
+                if (amt > 0 && p.solBalance >= amt) {
+                    p.solBalance -= amt; // Cobra el dinero al jugador
+                    if (!STATE.players[shadowId]) {
+                        STATE.players[shadowId] = {
+                            id: shadowId, name: p.name + ' (Bot)', avatar: '🤖',
+                            solBalance: 0, portfolio: {}, isBot: true, followers: 0, reputation: 1
+                        };
+                    }
+                    STATE.players[shadowId].solBalance += amt; // Se lo da a la billetera sombra
+                    p.volBots[tid] = { active: true, shadowId: shadowId, state: 'buy' };
+                    hostEmitAlert(p.id, `Bot iniciado con ${formatUSD(amt)}.`, "🤖");
+                } else {
+                    hostEmitAlert(p.id, `Saldo insuficiente para asignar al bot.`, "❌");
+                }
+            }
+            broadcastState();
+        }
+    }
+if (type === 'ACTION_TOGGLE_LIVE') {
+        if(STATE.tokens[payload.tokenId]) {
+            STATE.tokens[payload.tokenId].isLive = !STATE.tokens[payload.tokenId].isLive;
+            if(STATE.tokens[payload.tokenId].isLive) {
+                handleChatHost(`🔴 ¡El Dev de $${STATE.tokens[payload.tokenId].ticker} acaba de encender DIRECTO! ¡Hay hype masivo en la sala! 🎥`, senderId || STATE.players[senderId]?.name, true);
+            }
+            broadcastState();
+        }
+    }
     if (type === 'ACTION_LAUNCH') handleLaunchHost(payload.name, payload.ticker, payload.image, payload.devBuy, senderId, payload.coFounders);
     if (type === 'ACTION_BURN') handleBurnHost(payload.tokenId, payload.amount, senderId);
-    if (type === 'ACTION_CHAT') handleChatHost(payload.msg, senderId, false);
+    if (type === 'ACTION_CHAT') { handleChatHost(payload.msg, senderId, false); }
+    if (type === 'ACTION_DEXSCREENER') { handleDexScreenerHost(payload.tokenId, senderId); }
     if (type === 'ACTION_POST') handlePostHost(payload.text, senderId);
     if (type === 'ACTION_GIFT') handleGiftHost(payload.to, payload.asset, payload.amount, senderId);
     if (type === 'ACTION_BUY_LUXURY') handleBuyLuxuryHost(payload.itemId, senderId);
@@ -803,15 +917,14 @@ function getCompressedState() {
     
     const compressedPlayers = { ...humans };
     topBots.forEach(b => compressedPlayers[b.id] = b);
-
-    const compressedTokens = {};
+const compressedTokens = {};
     Object.values(STATE.tokens).forEach(t => {
         compressedTokens[t.id] = {
             ...t,
-            history: t.history ? t.history.slice(-25) : [] 
+            // Enviamos el historial largo para que la gráfica no se vea cortada al moverla
+            history: t.history ? t.history.slice(-1000) : [] 
         };
     });
-
     return { 
         players: compressedPlayers, 
         tokens: compressedTokens, 
@@ -919,10 +1032,10 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
     const currentPrice = getPrice(token.solPool, token.tokenPool);
     
     let currentCandle = token.currentCandle;
-    if (!currentCandle || Date.now() - currentCandle.time > 5000) { 
+if (!currentCandle || Date.now() - currentCandle.time > 1000) {
         if (currentCandle) {
             token.history.push(currentCandle);
-            if (token.history.length > 100) token.history.shift();
+           if (token.history.length > 5000) token.history.shift();
         }
         currentCandle = { time: Date.now(), open: currentPrice, high: currentPrice, low: currentPrice, close: currentPrice, vol: 0 };
     }
@@ -1102,6 +1215,27 @@ function handleBurnHost(tokenId, amount, playerId) {
     player.reputation = Math.min(100, (player.reputation || 1) + 1);
     STATE.chat.unshift({ id: Date.now(), sender: 'System', text: `🔥 ${player.name} quemó ${formatToken(amount)} $${token.ticker}`, sys: true });
     STATE.chat = STATE.chat.slice(0, 80); 
+    broadcastState();
+}
+function handleChatHost(msg, playerId, sys = false) {
+    const player = STATE.players[playerId];
+    if(!sys && !player) return;
+    const senderName = sys ? 'System' : player.name;
+    STATE.chat.unshift({ id: Date.now() + Math.random(), sender: senderName, text: msg, sys: sys });
+    STATE.chat = STATE.chat.slice(0, 80);
+    broadcastState();
+}
+
+function handleDexScreenerHost(tokenId, playerId) {
+    const token = STATE.tokens[tokenId];
+    const player = STATE.players[playerId];
+    if (!token || !player || player.solBalance < 350 || token.dexScreener) return;
+    
+    player.solBalance -= 350;
+    token.dexScreener = true;
+    player.reputation = Math.min(100, (player.reputation || 1) + 15); // Sube reputación del dev
+    
+    handleChatHost(`🦅 ¡$${token.ticker} ha pagado su actualización en DexScreener! Seguridad confirmada y FOMO entrante. 🚀`, 'System', true);
     broadcastState();
 }
 
@@ -1316,13 +1450,24 @@ function handleTuneCarHost(type, playerId) {
 }
 
 // BOT BRAIN OPTIMIZADO
+// BOT BRAIN OPTIMIZADO
 function startBotBrain() {
-    if(botInterval) clearInterval(botInterval);
+   if(botInterval) clearInterval(botInterval);
     botInterval = setInterval(() => {
         if (!STATE.roomConfig.isHost || !STATE.roomConfig.botsEnabled || STATE.gameState !== 'playing') return;
         
         const botList = Object.values(STATE.players).filter(p => p.isBot && !p.id.startsWith('SYSTEM_'));
         if (botList.length === 0) return;
+
+        // --- LÓGICA DE RECUPERACIÓN DE CAPITAL ---
+        let needsBroadcast = false;
+        botList.forEach(bot => {
+            if (!bot.initialBalance) bot.initialBalance = Math.max(bot.solBalance, 50);
+            if (bot.solBalance < bot.initialBalance * 0.5) {
+                bot.solBalance = bot.initialBalance; // Magia, recuperan el dinero
+                needsBroadcast = true;
+            }
+        });
 
         const tokenKeys = Object.keys(STATE.tokens);
         // Para no destruir el rendimiento con 10,000 bots, limitamos las acciones por tick a máx 100 bots.
@@ -1393,6 +1538,17 @@ function startBotBrain() {
                     if (creatorRep < 10 && bot.strategy !== 'RugPuller' && bot.strategy !== 'Degen') return false; 
                     
                     let hypeMulti = calculateHypeMultiplier(t.ticker) * exchMultiplier;
+                    
+                    // FOMO Masivo si está en LIVE (se suma a la variable que ya existe)
+                    if (t.isLive) {
+                        const devFollowers = STATE.players[t.creatorId]?.followers || 0;
+                        hypeMulti += 2.0 + (devFollowers / 1000);
+                    }
+                    
+                   if (t.dexScreener) {
+                        hypeMulti += 1.5; // Los bots se sienten más seguros invirtiendo
+                    }
+
                     const baseProb = 0.4;
                     if (Math.random() > (baseProb * hypeMulti)) return false; 
 
@@ -1445,7 +1601,7 @@ function startBotBrain() {
             }
         });
         
-        if(didTrade) broadcastState();
+        if(didTrade || needsBroadcast) broadcastState();
     }, 1500); 
 }
 
@@ -1453,6 +1609,30 @@ function startBotBrain() {
 function dispatchAction(type, payload) {
     if (STATE.roomConfig.isHost) {
         if(type==='ACTION_TRADE') { handleTradeHost(payload.tokenId, payload.isBuy, payload.amount, STATE.myProfile.id); broadcastState(); }
+        if(type==='ACTION_CHAT') { handleChatHost(payload.msg, STATE.myProfile.id, false); }
+        if(type==='ACTION_DEXSCREENER') { handleDexScreenerHost(payload.tokenId, STATE.myProfile.id); }
+        if(type==='ACTION_SET_SLTP') {
+            const p = STATE.players[STATE.myProfile.id];
+            if(p && p.tradesInfo && p.tradesInfo[payload.tokenId]) { p.tradesInfo[payload.tokenId][payload.type] = payload.value ? parseFloat(payload.value) : null; broadcastState(); }
+        }
+        if(type==='ACTION_TOGGLE_VOLBOT') {
+            const p = STATE.players[STATE.myProfile.id];
+            if(p) {
+                if(!p.volBots) p.volBots = {};
+                if(p.volBots[payload.tokenId] && p.volBots[payload.tokenId].active) p.volBots[payload.tokenId].active = false;
+                else p.volBots[payload.tokenId] = { active: true, amount: payload.amount, state: 'buy', originalAmount: payload.amount };
+                broadcastState();
+            }
+        }
+if(type==='ACTION_TOGGLE_LIVE') {
+            if(STATE.tokens[payload.tokenId]) {
+                STATE.tokens[payload.tokenId].isLive = !STATE.tokens[payload.tokenId].isLive;
+                if(STATE.tokens[payload.tokenId].isLive) {
+                    handleChatHost(`🔴 ¡El Dev de $${STATE.tokens[payload.tokenId].ticker} acaba de encender DIRECTO! ¡Hay hype masivo en la sala! 🎥`, STATE.myProfile.id, true);
+                }
+                broadcastState();
+            }
+        }
         if(type==='ACTION_LAUNCH') handleLaunchHost(payload.name, payload.ticker, payload.image, payload.devBuy, STATE.myProfile.id, payload.coFounders);
         if(type==='ACTION_BURN') handleBurnHost(payload.tokenId, payload.amount, STATE.myProfile.id);
         if(type==='ACTION_CHAT') handleChatHost(payload.msg, STATE.myProfile.id, false);
@@ -1523,7 +1703,7 @@ function dispatchAction(type, payload) {
 
 // RENDERING UI ENGINE
 function switchTab(tabId) { STATE.activeTab = tabId; STATE.selectedTokenId = null; STATE._renderedTabId = null; updateUI(); }
-function selectToken(id) { STATE.selectedTokenId = id; STATE.tradeAmount = ''; STATE._renderedTabId = null; updateUI(); }
+function selectToken(id) { STATE.selectedTokenId = id; STATE.tradeAmount = ''; STATE._renderedTabId = null; STATE.chartConfig = { zoom: 100, offset: 0 }; updateUI(); }
 function setTradeType(type) { STATE.tradeType = type; STATE.tradeAmount = ''; STATE._renderedTabId = null; updateUI(); }
 
 function addToast(msg, icon) {
@@ -1553,12 +1733,20 @@ function updateDynamicDOM() {
     const me = STATE.players[STATE.myProfile.id] || { solBalance: 0 };
     const balEl = document.getElementById('my-balance'); if(balEl) balEl.innerText = formatUSD(me.solBalance);
     
-    const tickerEl = document.getElementById('trending-marquee');
-    if (tickerEl) {
-        const trends = Object.values(STATE.tokens).sort((a,b) => b.solPool - a.solPool).slice(0, 8);
-        if(trends.length > 0) tickerEl.innerHTML = trends.map(t => `<span class="mx-4">🔥 <span class="font-black text-white">$${t.ticker}</span> (${formatUSD(t.solPool - (t.virtualSol || VIRTUAL_USD_RESERVE))})</span>`).join(' • ');
-        else tickerEl.innerHTML = "EL MERCADO ESTÁ VACÍO. SÉ EL PRIMERO EN CREAR UN TOKEN.";
-    }
+   const tickerEl = document.getElementById('trending-marquee');
+    if (tickerEl) {
+        const myTokens = Object.values(STATE.tokens).filter(t => me.portfolio && me.portfolio[t.id] > 0);
+        if(myTokens.length > 0) {
+            tickerEl.innerHTML = myTokens.map(t => {
+                const currentPrice = getPrice(t.solPool, t.tokenPool);
+                const entryPrice = me.tradesInfo?.[t.id]?.entryPrice || currentPrice;
+                const pnl = ((currentPrice - entryPrice) / entryPrice) * 100;
+                return `<span class="mx-4 cursor-pointer hover:underline" onclick="selectToken('${t.id}'); switchTab('market');">💼 <span class="font-black text-white">$${t.ticker}</span> <span class="${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}">(${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%)</span></span>`;
+            }).join(' • ');
+        } else {
+            tickerEl.innerHTML = "AÚN NO TIENES TOKENS EN TU PORTAFOLIO. ¡COMPRA ALGO!";
+        }
+    }
     
     const renderChatMessages = (containerId, limit, hideSys) => {
         const cEl = document.getElementById(containerId);
@@ -2273,111 +2461,155 @@ function RenderTokenDetailSkeleton() {
     const token = STATE.tokens[STATE.selectedTokenId];
     if (!token) { STATE.selectedTokenId = null; STATE.activeTab='market'; return RenderMarketSkeleton(); }
     const me = STATE.players[STATE.myProfile.id];
-    
-    const imgHTML = token.image && token.image.startsWith('data:image') || (token.image && token.image.startsWith('http')) 
-      ? `<img src="${token.image}" class="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-xl object-cover border border-slate-700 shadow-lg shrink-0" onerror="this.outerHTML='<div class=\\'w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 bg-slate-800 rounded-xl flex items-center justify-center border border-slate-700 text-2xl shadow-lg shrink-0\\'>🪙</div>'"/>` 
-      : `<div class="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 bg-slate-800 rounded-xl flex items-center justify-center border border-slate-700 text-2xl shadow-lg shrink-0">🪙</div>`;
 
-    const exch = token.exchange || 'Pump.fun';
+    // Preparar info del creador
+    const creatorsCount = token.creatorIds ? token.creatorIds.length : 1;
+    const isMultiSig = creatorsCount > 1;
+    const firstCreatorId = token.creatorIds ? token.creatorIds[0] : token.creatorId;
+    const creatorName = STATE.players[firstCreatorId] ? STATE.players[firstCreatorId].name : 'Desconocido';
+
+    const imgHTML = token.image && (token.image.startsWith('data:image') || token.image.startsWith('http')) 
+      ? `<img src="${token.image}" alt="${token.name}" class="w-12 h-12 md:w-14 md:h-14 rounded-2xl border-2 border-slate-700 shadow-inner object-cover" />` 
+      : `<div class="w-12 h-12 md:w-14 md:h-14 bg-slate-800 rounded-2xl flex items-center justify-center border-2 border-slate-700 text-2xl shadow-inner shrink-0">🪙</div>`;
 
     return `
-    <div class="space-y-4 max-w-7xl mx-auto h-full flex flex-col animate-fade-in">
-        <button onclick="switchTab('market');" class="text-slate-400 hover:text-white flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest w-fit bg-slate-900 px-4 py-2 rounded-xl border border-slate-800 transition-colors shadow-sm hover:border-slate-600 shrink-0">← Volver</button>
+    <div class="flex flex-col h-full w-full overflow-hidden bg-[#020617]" id="token-detail-container">
         
-        <!-- Contenedor principal con Scroll vertical solo en móviles -->
-        <div class="flex flex-col lg:flex-row gap-4 md:gap-5 h-full pb-6 min-h-0 overflow-y-auto lg:overflow-y-hidden">
+       <header class="flex-none p-4 md:px-6 py-3 border-b border-slate-800 bg-slate-900/50 flex items-center gap-4 z-10 shadow-lg">
+            <button onclick="switchTab('market');" class="text-slate-400 hover:text-white flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-800 transition-colors shrink-0" title="Volver al Mercado">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <div class="relative shrink-0">
+                ${imgHTML}
+                <div class="absolute -bottom-1 -right-1 bg-slate-900 rounded-full p-0.5 border border-slate-800 z-10">
+                    <img src="https://cryptologos.cc/logos/solana-sol-logo.png?v=032" class="w-4 h-4" title="Solana Network"/>
+                </div>
+                <div id="dex-badge" class="hidden absolute -top-2 -left-2 bg-slate-900 text-white text-[8px] font-black px-1.5 py-0.5 rounded shadow-lg border border-slate-700 flex items-center gap-1 z-20">🦅 DEX</div>
+            </div>
             
-            <!-- Panel Izquierdo -->
-            <div class="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-4 md:p-6 flex flex-col shadow-xl overflow-y-auto min-h-[400px] shrink-0 lg:shrink">
-                <div class="flex justify-between items-start mb-4 md:mb-6 flex-wrap gap-3 shrink-0">
-                    <div class="flex gap-3 items-center w-full sm:w-auto">
-                        <div class="relative">
-                            ${imgHTML}
-                            <div id="tok-cex-badge" class="absolute -top-3 -right-3 ${exch!=='Pump.fun'?'bg-yellow-400 text-black':'hidden'} text-[9px] font-black px-2 py-1 rounded shadow-lg border border-yellow-600 animate-bounce">${exch}</div>
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-0.5">
+                    <h1 class="text-xl md:text-2xl font-black text-white truncate terminal-text">${token.name}</h1>
+                    <span class="text-sm md:text-base font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-lg border border-emerald-500/20">$${token.ticker}</span>
+                </div>
+                
+                <div class="flex items-center gap-3 text-slate-400 text-[10px] md:text-xs font-medium">
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <span class="text-slate-600">Dev:</span>
+                        <span class="font-mono text-white bg-slate-800 px-2 py-0.5 rounded">${firstCreatorId.substring(0,6)}...</span>
+                        <span class="text-white">${creatorName} ${isMultiSig ? `<span class="text-orange-400">[MultiSig ${creatorsCount}]</span>` : ''}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 md:gap-3 shrink-0 bg-slate-950 border border-slate-800 p-3 rounded-2xl shadow-inner font-mono text-center">
+                <div>
+                    <div class="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Precio</div>
+                    <div id="hdr-price" class="text-sm md:text-xl text-white font-black">...</div>
+                </div>
+                <div class="h-6 w-px bg-slate-800"></div>
+                <div>
+                    <div class="text-[9px] text-slate-500 uppercase tracking-widest font-bold">ATH</div>
+                    <div id="hdr-ath" class="text-sm md:text-xl text-yellow-400 font-black">...</div>
+                </div>
+                <div class="h-6 w-px bg-slate-800"></div>
+                <div>
+                    <div class="text-[9px] text-slate-500 uppercase tracking-widest font-bold">MCap</div>
+                    <div id="hdr-mcap" class="text-sm md:text-xl text-emerald-400 font-black">...</div>
+                </div>
+            </div>
+        </header>
+        <div class="flex-1 flex overflow-hidden w-full relative" id="split-container">
+            
+            <div class="h-full flex flex-col min-w-[200px]" style="width: 70%;" id="pane-chart">
+                <div class="flex-none p-3 border-b border-slate-800 bg-slate-950 flex justify-between items-center gap-2">
+                    <div class="flex items-center gap-2 text-slate-300">
+                        ${Icons.TrendingUp} <span class="font-bold text-sm uppercase tracking-wider hidden md:inline">Gráfica Pro</span>
+                        <div class="flex ml-2 bg-slate-900 rounded-md p-0.5 border border-slate-800">
+                            <button onclick="STATE.chartTimeframe=1; document.getElementById('btn-tf-1').classList.add('bg-emerald-500/20','text-emerald-400'); document.getElementById('btn-tf-1').classList.remove('text-slate-500'); document.getElementById('btn-tf-15').classList.remove('bg-emerald-500/20','text-emerald-400'); document.getElementById('btn-tf-15').classList.add('text-slate-500'); STATE.chartConfig={zoom:100, offset:0}; if(typeof UpdateChartVisualsOnly==='function') UpdateChartVisualsOnly();" id="btn-tf-1" class="px-2 py-0.5 text-[10px] font-bold rounded ${(!STATE.chartTimeframe || STATE.chartTimeframe===1) ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-500 hover:text-white'}">1s</button>
+                            <button onclick="STATE.chartTimeframe=15; document.getElementById('btn-tf-15').classList.add('bg-emerald-500/20','text-emerald-400'); document.getElementById('btn-tf-15').classList.remove('text-slate-500'); document.getElementById('btn-tf-1').classList.remove('bg-emerald-500/20','text-emerald-400'); document.getElementById('btn-tf-1').classList.add('text-slate-500'); STATE.chartConfig={zoom:100, offset:0}; if(typeof UpdateChartVisualsOnly==='function') UpdateChartVisualsOnly();" id="btn-tf-15" class="px-2 py-0.5 text-[10px] font-bold rounded ${STATE.chartTimeframe===15 ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-500 hover:text-white'}">15s</button>
                         </div>
-                        <div class="flex-1 min-w-0 pr-2">
-                            <h1 class="text-xl sm:text-2xl md:text-4xl font-black text-white tracking-tight mb-1 truncate">${token.name} <span class="text-emerald-400 text-sm md:text-xl bg-emerald-500/10 px-2 py-0.5 rounded-xl ml-1 font-mono border border-emerald-500/20">$${token.ticker}</span></h1>
-                            <div class="flex flex-wrap items-center gap-2 text-[9px] md:text-sm font-bold text-slate-400">
-                                <span class="flex items-center gap-1 cursor-pointer hover:text-white transition-colors" onclick="STATE.viewingProfileId='${token.creatorId}'; STATE.giftTargetId=null; renderModal();">
-                                    Dev(s): <span class="underline">${token.creatorName}</span>
-                                </span>
-                                <div class="w-1 h-1 bg-slate-700 rounded-full hidden sm:block"></div>
-                                <span class="flex items-center gap-1 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-800 shadow-inner" title="Reputación del Creador">
-                                    <span class="text-slate-600">${Icons.Shield}</span> <span id="tok-dev-rep">...</span>
-                                </span>
-                                ${(token.creatorIds || [token.creatorId]).includes(me.id) ? `<span class="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded-lg uppercase tracking-wider text-[8px]">Es tuyo</span>` : ''}
+                    </div>
+                    <div class="flex items-center gap-1 text-[10px] text-slate-500 font-mono">
+                        ${Icons.Mouse} Clic+Arrastrar: Pan | ${Icons.ZoomIn} Rueda/Pellizco: Zoom
+                    </div>
+                </div>
+                
+                <div class="flex-1 w-full h-full p-2 md:p-4 bg-[#01040f] overflow-hidden" id="tok-chart">
+                    </div>
+            </div>
+
+            <div class="w-2 hover:w-3 bg-slate-800 hover:bg-emerald-500/50 cursor-col-resize transition-all z-20 flex items-center justify-center group" id="resizer-h">
+                <div class="h-8 w-1 bg-slate-600 group-hover:bg-white rounded-full transition-colors"></div>
+            </div>
+
+            <div class="h-full flex flex-col min-w-[300px] max-w-[800px] border-l border-slate-800 bg-slate-900" style="width: 30%;" id="pane-trade">
+                <div class="flex-none p-3 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
+                    <div class="flex items-center gap-1.5 text-slate-300">
+                        ${Icons.Swap} <span class="font-bold text-sm uppercase tracking-wider">Instatrade</span>
+                    </div>
+                    <span class="text-xs font-black text-white bg-blue-600 px-3 py-1 rounded-full shadow-md">SOLv2</span>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-4 md:p-5 space-y-4 md:space-y-5 hide-scrollbar">
+                    
+                    <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-inner">
+                        <div class="flex bg-slate-900 border border-slate-800 rounded-xl p-1 mb-4">
+                            <button onclick="setTradeType('buy');" class="flex-1 py-2 font-black text-xs md:text-sm rounded-lg transition-all uppercase tracking-wider ${STATE.tradeType==='buy'?'bg-emerald-500 text-slate-950 shadow-md':'text-slate-500 hover:text-white'}">Comprar</button>
+                            <button onclick="setTradeType('sell');" class="flex-1 py-2 font-black text-xs md:text-sm rounded-lg transition-all uppercase tracking-wider ${STATE.tradeType==='sell'?'bg-red-500 text-slate-950 shadow-md':'text-slate-500 hover:text-white'}">Vender</button>
+                        </div>
+
+                        <div class="flex justify-between text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">
+                            <span>Pagas en ${STATE.tradeType==='buy'?'USD':'$'+token.ticker}</span>
+                            <span class="text-emerald-400">Bal: <span id="tok-bal-base" class="font-mono">...</span></span>
+                        </div>
+                        
+                        <div class="relative mb-3">
+                            <input id="t-amount" type="number" value="${STATE.tradeAmount}" onchange="STATE.tradeAmount = this.value; UpdateTokenDetailDynamic();" placeholder="0.0" class="w-full bg-[#020617] border border-slate-800 rounded-xl px-4 py-4 text-white font-mono text-3xl focus:outline-none focus:border-emerald-500 transition-colors shadow-inner" />
+                        </div>
+                        
+                        <div class="flex gap-2 mb-4" id="tok-pct-btns">
                             </div>
+
+                        <div class="bg-[#020617] border border-slate-800 p-4 rounded-xl mb-4 space-y-3 text-xs shadow-inner">
+                            <div class="flex justify-between text-slate-400 font-bold uppercase tracking-wider"><span>Recibes est:</span> <span id="tok-est-rec" class="font-mono text-white text-base">...</span></div>
+                            <div class="h-px bg-slate-800 w-full my-1"></div>
+                            <div class="flex justify-between text-slate-500 font-bold uppercase tracking-wider"><span>Slippage / Fee:</span> <span class="font-mono text-slate-400 text-xs">2% Auto</span></div>
+                        </div>
+
+                        <button onclick="const a=parseFloat(document.getElementById('t-amount').value); if(a>0){ dispatchAction('ACTION_TRADE', {tokenId:'${token.id}', isBuy:${STATE.tradeType==='buy'}, amount:a}); document.getElementById('t-amount').value=''; STATE.tradeAmount=''; }" class="w-full py-4 rounded-xl font-black text-base md:text-lg uppercase tracking-widest transition-all shadow-lg ${STATE.tradeType==='buy' ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-emerald-500/20' : 'bg-red-500 text-slate-950 hover:bg-red-400 shadow-red-500/20'}">
+                            ${STATE.tradeType==='buy' ? 'APE IN' : 'DUMP'}
+                        </button>
+                    </div>
+
+                    <div class="flex flex-col gap-2" id="tok-tools">
+                        </div>
+
+                    <div id="creator-fixed-tools" class="hidden flex flex-col gap-2">
+                        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 shadow-inner">
+                            <div class="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2.5 flex justify-between">
+                                <span>Bot de Volumen Profecional</span>
+                                <span id="vol-bot-status" class="text-slate-500">INACTIVO</span>
+                            </div>
+                            <div id="vol-bot-info"></div>
+                            <input id="vol-bot-amt" type="number" placeholder="Fondo a asignar (USD)" class="w-full bg-[#020617] border border-slate-800 rounded-lg px-3 py-2 text-white text-sm mb-3 focus:border-emerald-500 outline-none transition-colors"/>
+                            <button id="vol-bot-btn" onclick="const amt=parseFloat(document.getElementById('vol-bot-amt').value); dispatchAction('ACTION_TOGGLE_VOLBOT', {tokenId:'${token.id}', amount:amt||0}); document.getElementById('vol-bot-amt').value='';" class="w-full bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 rounded-lg py-2.5 text-[10px] font-bold transition-all uppercase tracking-wider">
+                                Iniciar Bot
+                            </button>
                         </div>
                     </div>
-                    <div class="text-right bg-slate-950 p-3 md:p-5 rounded-2xl border border-slate-800 shadow-inner w-full sm:w-auto flex flex-row sm:flex-col justify-between items-center sm:items-end">
-                        <div class="text-[9px] md:text-xs font-bold text-slate-500 uppercase tracking-widest sm:mb-1">Precio</div>
-                        <div id="tok-price" class="text-base sm:text-xl md:text-3xl font-mono font-black text-emerald-400">...</div>
-                        <div class="text-[9px] md:text-sm font-bold text-slate-400 sm:mt-1">MCap: <span id="tok-mcap" class="text-white">...</span></div>
-                        <div id="tok-pnl-container" class="mt-2 hidden text-right flex flex-col sm:items-end w-full sm:w-auto"></div>
-                    </div>
-                </div>
 
-                <div class="mb-4 bg-[#020617] p-3 md:p-4 rounded-2xl border border-slate-800 shadow-inner shrink-0">
-                    <div class="flex justify-between text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 md:mb-2.5">
-                        <span id="tok-prog-lbl">Curva de Liquidez</span>
-                        <span id="tok-prog-text" class="text-emerald-400">...</span>
+                    <div class="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-inner mt-4">
+                        <div class="p-3 border-b border-slate-800 bg-slate-900 text-[10px] font-black text-slate-500 uppercase flex justify-between tracking-widest">
+                            <span class="flex items-center gap-2">${Icons.PieChart} Top Holders</span><span>% Supply</span>
+                        </div>
+                        <div id="tok-holders" class="p-2 space-y-1 max-h-60 overflow-y-auto hide-scrollbar">
+                            </div>
                     </div>
-                    <div class="h-3 md:h-4 w-full bg-slate-900 rounded-full border border-slate-700 overflow-hidden shadow-inner">
-                        <div id="tok-prog-bar" class="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-500" style="width: 0%"></div>
-                    </div>
-                </div>
 
-                <div class="w-full flex-1 bg-[#020617] border border-slate-800 rounded-2xl overflow-hidden relative shadow-inner min-h-[150px]" id="tok-chart">
-                    <!-- Chart Dynamic -->
                 </div>
             </div>
 
-            <!-- PANEL DERECHO (Trade) -->
-            <div class="w-full lg:w-80 xl:w-96 shrink-0 flex flex-col gap-4 md:gap-5 overflow-visible lg:overflow-y-auto pb-10 lg:pb-0">
-                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 md:p-6 shadow-xl shrink-0">
-                    <div class="flex bg-slate-950 border border-slate-800 rounded-xl p-1 mb-4 shadow-inner">
-                        <button onclick="setTradeType('buy');" class="flex-1 py-2 font-black text-[10px] md:text-sm rounded-lg transition-all uppercase tracking-wider ${STATE.tradeType==='buy'?'bg-emerald-500 text-slate-950 shadow-md':'text-slate-500 hover:text-white'}">Comprar</button>
-                        <button onclick="setTradeType('sell');" class="flex-1 py-2 font-black text-[10px] md:text-sm rounded-lg transition-all uppercase tracking-wider ${STATE.tradeType==='sell'?'bg-red-500 text-slate-950 shadow-md':'text-slate-500 hover:text-white'}">Vender</button>
-                    </div>
-
-                    <div class="flex justify-between text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">
-                        <span>Pagas en ${STATE.tradeType==='buy'?'USD':'$'+token.ticker}</span>
-                        <span class="text-emerald-400">Bal: <span id="tok-bal-base">...</span></span>
-                    </div>
-                    
-                    <div class="relative mb-2 md:mb-3">
-                        <input id="t-amount" type="number" value="${STATE.tradeAmount}" oninput="STATE.tradeAmount = this.value; UpdateTokenDetailDynamic();" placeholder="0.0" class="w-full bg-[#020617] border border-slate-800 rounded-xl px-3 py-3 md:py-4 text-white font-mono text-lg md:text-2xl focus:outline-none focus:border-emerald-500 transition-colors shadow-inner" />
-                    </div>
-                    
-                    <div class="flex gap-1.5 md:gap-2 mb-4" id="tok-pct-btns">
-                        <!-- Pct buttons -->
-                    </div>
-
-                    <div class="bg-slate-950 border border-slate-800 p-3 md:p-5 rounded-2xl mb-4 space-y-2 md:space-y-3 text-[10px] md:text-sm shadow-inner">
-                        <div class="flex justify-between text-slate-400 font-bold uppercase tracking-wider"><span>Recibes est:</span> <span id="tok-est-rec" class="font-mono text-white text-xs md:text-base">...</span></div>
-                        <div class="flex justify-between text-slate-500 font-bold uppercase tracking-wider"><span>Fee Dev (2%):</span> <span id="tok-fee-est" class="font-mono text-white text-xs">...</span></div>
-                        <div class="h-px bg-slate-800 w-full"></div>
-                        <div class="flex justify-between text-slate-500 font-bold uppercase tracking-wider"><span>Liquidez Real:</span> <span id="tok-real-liq" class="font-mono text-xs">...</span></div>
-                    </div>
-
-                    <button onclick="const a=parseFloat(document.getElementById('t-amount').value); if(a>0){ dispatchAction('ACTION_TRADE', {tokenId:'${token.id}', isBuy:${STATE.tradeType==='buy'}, amount:a}); document.getElementById('t-amount').value=''; STATE.tradeAmount=''; }" class="w-full py-3 md:py-4 rounded-xl font-black text-sm md:text-lg uppercase tracking-widest transition-all shadow-lg ${STATE.tradeType==='buy' ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-emerald-500/20' : 'bg-red-500 text-slate-950 hover:bg-red-400 shadow-red-500/20'}">
-                        ${STATE.tradeType==='buy' ? 'Ape In' : 'Dump'}
-                    </button>
-
-                    <div class="mt-4 flex flex-col gap-2" id="tok-tools">
-                        <!-- Tools -->
-                    </div>
-                </div>
-
-                <div class="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden flex-1 flex flex-col min-h-[150px] md:min-h-[250px] shadow-xl shrink-0 mt-4 md:mt-0">
-                    <div class="p-3 border-b border-slate-800 bg-slate-950 text-[9px] md:text-[10px] font-black text-slate-500 uppercase flex justify-between tracking-widest">
-                        <span class="flex items-center gap-2">${Icons.PieChart} Holder</span><span>% Supply</span>
-                    </div>
-                    <div id="tok-holders" class="overflow-y-auto p-2 space-y-1 flex-1 min-h-0">
-                        <!-- Holders Dynamic -->
-                    </div>
-                </div>
-            </div>
         </div>
     </div>`;
 }
@@ -2388,6 +2620,32 @@ function UpdateTokenDetailDynamic() {
     const me = STATE.players[STATE.myProfile.id];
     const currentPrice = getPrice(token.solPool, token.tokenPool);
     const mcap = currentPrice * token.initialSupply; 
+
+    // --- ACTUALIZAR CABECERA TOP (NUEVO) ---
+   // --- ACTUALIZAR CABECERA TOP Y ATH ---
+    const hdrPrice = document.getElementById('hdr-price');
+    const hdrMcap = document.getElementById('hdr-mcap');
+    const hdrAth = document.getElementById('hdr-ath');
+    const dexBadge = document.getElementById('dex-badge');
+    
+    // Calcula el ATH buscando el pico más alto de la historia y lo convierte a MarketCap
+    const athPrice = Math.max(...(token.history || []).map(c => c.high), token.currentCandle?.high || 0, currentPrice);
+    const athMcap = athPrice * (token.initialSupply || 1000000000);
+
+    if (hdrPrice) hdrPrice.innerText = '$' + currentPrice.toFixed(8);
+    if (hdrAth) hdrAth.innerText = formatUSD(athMcap);
+    if (hdrMcap) hdrMcap.innerText = formatUSD(mcap);
+    if (dexBadge) {
+        if (token.dexScreener) dexBadge.classList.remove('hidden');
+        else dexBadge.classList.add('hidden');
+    }
+    // ----------------------------------------
+    
+    if (hdrPrice) hdrPrice.innerText = '$' + currentPrice.toFixed(8);
+    if (hdrMcap) hdrMcap.innerText = formatUSD(mcap);
+    // ----------------------------------------
+    
+    const balBase = document.getElementById('tok-bal-base');
     const balTokens = me.portfolio[token.id] || 0;
     const isCex = token.exchange !== 'Pump.fun' && token.exchange !== 'Raydium';
     const vRes = token.virtualSol || VIRTUAL_USD_RESERVE;
@@ -2434,8 +2692,11 @@ function UpdateTokenDetailDynamic() {
     const pTxt = document.getElementById('tok-prog-text'); if(pTxt) pTxt.innerText = progress.toFixed(1) + '%';
     const pBar = document.getElementById('tok-prog-bar'); if(pBar) { pBar.style.width = progress + '%'; pBar.className = `h-full transition-all duration-500 ${isCex ? 'bg-gradient-to-r from-yellow-500 to-yellow-300' : isComplete ? 'bg-gradient-to-r from-purple-600 to-purple-400' : 'bg-gradient-to-r from-emerald-600 to-emerald-400'}`; }
     
-    const chEl = document.getElementById('tok-chart'); if(chEl) chEl.innerHTML = generateChartSVG(token, 800, 400, false);
-    
+   const chEl = document.getElementById('tok-chart'); 
+    if(chEl) { 
+        chEl.innerHTML = generateChartSVG(token, 800, 400, false);
+        if(typeof setupChartInteractions === 'function') setupChartInteractions(chEl);
+    }
     const tBal = document.getElementById('tok-bal-base'); if(tBal) tBal.innerText = STATE.tradeType==='buy'?formatUSD(me.solBalance):formatToken(balTokens);
     const eRec = document.getElementById('tok-est-rec'); if(eRec) eRec.innerText = STATE.tradeType==='buy'?formatToken(estimated):formatUSD(estimated);
     const eFee = document.getElementById('tok-fee-est'); if(eFee) eFee.innerText = STATE.tradeType==='buy'?formatUSD(feeEst):formatUSD(feeEst);
@@ -2444,13 +2705,17 @@ function UpdateTokenDetailDynamic() {
     const pctBtns = document.getElementById('tok-pct-btns');
     if(pctBtns) {
         pctBtns.innerHTML = [1, 10, 50, 100].map(pct => `
-            <button onclick="const am = STATE.tradeType === 'buy' ? (Math.max(0, ${me.solBalance} - 0.01) * ${pct/100}).toFixed(2) : (${balTokens} * ${pct/100}); STATE.tradeAmount = am; document.getElementById('t-amount').value = am; UpdateTokenDetailDynamic();" class="flex-1 bg-slate-950 border border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-500/10 text-slate-400 hover:text-emerald-400 text-[9px] md:text-xs py-2 rounded-lg font-bold font-mono transition-all shadow-inner">
+            <button onclick="const am = STATE.tradeType === 'buy' ? (Math.max(0, ${me.solBalance} - 0.01) * ${pct/100}).toFixed(2) : (${balTokens} * ${pct/100}); STATE.tradeAmount = am; document.getElementById('t-amount').value = am; UpdateTokenDetailDynamic();" class="flex-1 bg-[#020617] border border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-500/10 text-slate-400 hover:text-emerald-400 text-[10px] md:text-xs rounded-lg font-bold font-mono transition-all shadow-inner py-2">
                 ${pct}%
             </button>
         `).join('');
     }
+    const tpInput = document.getElementById('tp-input');
+    const slInput = document.getElementById('sl-input');
+    if(tpInput && me.tradesInfo && me.tradesInfo[token.id]) tpInput.value = me.tradesInfo[token.id].tp || '';
+    if(slInput && me.tradesInfo && me.tradesInfo[token.id]) slInput.value = me.tradesInfo[token.id].sl || '';
 
-    const tools = document.getElementById('tok-tools');
+   const tools = document.getElementById('tok-tools');
     if(tools) {
         let toolsHTML = `
             <button onclick="const b = prompt('¿Quemar tokens? Se restarán de tu inventario y del Supply Total para subir el precio base.'); if(b && Number(b)>0){ dispatchAction('ACTION_BURN', { tokenId: '${token.id}', amount: Number(b) }); }" ${balTokens <= 0 ? 'disabled' : ''} class="w-full bg-orange-500/10 text-orange-500 border border-orange-500/30 hover:bg-orange-500/20 rounded-xl py-2 md:py-3 text-[9px] md:text-[10px] font-black flex justify-center items-center gap-1.5 transition-all disabled:opacity-30 disabled:cursor-not-allowed uppercase tracking-widest">
@@ -2469,22 +2734,31 @@ function UpdateTokenDetailDynamic() {
                     <span>Panel de Dev</span>
                     <span class="text-emerald-400">Tus Fees: ${formatUSD(feesToClaimPool)}</span>
                 </div>
-                <div class="flex gap-2">
+                <div class="flex gap-2 mb-2">
                     <button onclick="dispatchAction('ACTION_CLAIM_FEES', { tokenId: '${token.id}' });" class="flex-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-wider">
                         Reclamar Fees
                     </button>
                 </div>
+                <button onclick="dispatchAction('ACTION_TOGGLE_LIVE', { tokenId: '${token.id}' });" class="w-full mb-2 ${token.isLive ? 'bg-red-500/20 text-red-400 border-red-500/30 animate-pulse' : 'bg-slate-800 text-white border-slate-700 hover:bg-slate-700'} border rounded-lg py-2 text-[9px] font-black transition-all uppercase tracking-wider flex items-center justify-center gap-2">
+                    ${token.isLive ? '🔴 EN VIVO (FOMO ACTIVO)' : '🎥 Iniciar Live'}
+                </button>
+                ${!token.dexScreener ? `
+                <button onclick="if(window.confirm('¿Pagar $350 para actualizar DexScreener? Da máxima seguridad a los inversores y dispara el FOMO.')) dispatchAction('ACTION_DEXSCREENER', { tokenId: '${token.id}' });" class="w-full mb-2 bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/30 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-wider">
+                    🦅 Pagar DexScreener ($350)
+                </button>
+                ` : `<div class="w-full mb-2 bg-indigo-900/50 text-indigo-300 border border-indigo-800/50 rounded-lg py-2 text-[9px] font-bold text-center uppercase tracking-wider">🦅 DexScreener Actualizado</div>`}
+                
                 ${token.exchange === 'Pump.fun' || token.exchange === 'Raydium' ? `
-                <button onclick="${hasEnoughMcap ? `if(window.confirm('Listar en CoinMarketCap cuesta $100 y aumenta el hype. ¿Continuar?')) dispatchAction('ACTION_UPGRADE_EXCHANGE', { tokenId: '${token.id}', exchange: 'CoinMarketCap' });` : `alert('Necesitas $10,000 de MarketCap para listar en Exchange. Tu MCap actual es ${formatUSD(mcap)}.');`}" class="w-full mt-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-wider">
+                <button onclick="${hasEnoughMcap ? `if(window.confirm('Listar en CoinMarketCap cuesta $100 y aumenta el hype. ¿Continuar?')) dispatchAction('ACTION_UPGRADE_EXCHANGE', { tokenId: '${token.id}', exchange: 'CoinMarketCap' });` : `alert('Necesitas $10,000 de MarketCap para listar en Exchange. Tu MCap actual es ${formatUSD(mcap)}.');`}" class="w-full mb-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-wider">
                     Listar en CMC ($100) ${hasEnoughMcap ? '' : '🔒 Req: $10k'}
                 </button>
                 ` : ''}
                 ${token.exchange === 'CoinMarketCap' ? `
-                <button onclick="${hasEnoughMcap ? `if(window.confirm('Listar en Binance cuesta $5000. ¿Continuar?')) dispatchAction('ACTION_UPGRADE_EXCHANGE', { tokenId: '${token.id}', exchange: 'Binance' });` : `alert('Necesitas $10,000 de MarketCap para listar en Exchange. Tu MCap actual es ${formatUSD(mcap)}.');`}" class="w-full mt-2 bg-yellow-500/20 text-yellow-500 border border-yellow-500/30 hover:bg-yellow-500/30 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-wider">
+                <button onclick="${hasEnoughMcap ? `if(window.confirm('Listar en Binance cuesta $5000. ¿Continuar?')) dispatchAction('ACTION_UPGRADE_EXCHANGE', { tokenId: '${token.id}', exchange: 'Binance' });` : `alert('Necesitas $10,000 de MarketCap para listar en Exchange. Tu MCap actual es ${formatUSD(mcap)}.');`}" class="w-full mb-2 bg-yellow-500/20 text-yellow-500 border border-yellow-500/30 hover:bg-yellow-500/30 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-wider">
                     Listar en Binance ($5000)
                 </button>
                 ` : ''}
-                <button onclick="if(window.confirm('RUG PULL: ¿Vender 100% de tu inventario de golpe? Perderás reputación drásticamente.')){ dispatchAction('ACTION_TRADE', { tokenId: '${token.id}', isBuy: false, amount: ${balTokens} }); }" class="w-full mt-2 bg-red-950/40 text-red-500 border border-red-900/50 hover:bg-red-900/60 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-widest">
+               <button onclick="if(window.confirm('RUG PULL: ¿Vender 100% de tu inventario de golpe? Perderás reputación drásticamente.')){ dispatchAction('ACTION_TRADE', { tokenId: '${token.id}', isBuy: false, amount: ${balTokens} }); }" class="w-full mt-2 bg-red-950/40 text-red-500 border border-red-900/50 hover:bg-red-900/60 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-widest">
                     ${Icons.Alert} Rug Pull
                 </button>
             </div>
@@ -2493,6 +2767,56 @@ function UpdateTokenDetailDynamic() {
         tools.innerHTML = toolsHTML;
     }
 
+    // Lógica dinámica segura para el Bot de Volumen Fijo
+    // Lógica dinámica segura para el Bot de Volumen Fijo
+    const fixedCreatorTools = document.getElementById('creator-fixed-tools');
+    if (fixedCreatorTools) {
+        if ((token.creatorIds || [token.creatorId]).includes(me.id)) {
+            fixedCreatorTools.classList.remove('hidden');
+            
+            const volBot = me.volBots && me.volBots[token.id];
+            const shadow = volBot ? STATE.players[volBot.shadowId] : null;
+            
+            const statusSpan = document.getElementById('vol-bot-status');
+            const volBtn = document.getElementById('vol-bot-btn');
+            const amtInput = document.getElementById('vol-bot-amt');
+            const botInfoContainer = document.getElementById('vol-bot-info');
+            
+            let botStatusText = 'INACTIVO';
+            let botStatusColor = 'text-slate-500';
+            let botBtnText = 'Iniciar Bot';
+            let botInfoHtml = '';
+
+            if (volBot && volBot.active && shadow) {
+                botStatusText = 'ACTIVO';
+                botStatusColor = 'text-emerald-400 font-black animate-pulse';
+                botBtnText = 'Detener y Retirar Fondos';
+                
+                const botTokens = shadow.portfolio[token.id] || 0;
+                const botTokensUsd = botTokens > 0 ? calcSolOut(botTokens, token.solPool, token.tokenPool) : 0;
+                const totalBotUsd = shadow.solBalance + botTokensUsd;
+
+                botInfoHtml = `<div class="text-[10px] text-slate-400 font-mono mb-3 bg-[#020617] p-2 rounded-lg border border-slate-800 text-center">
+                    💰 Capital del Bot: <span class="text-emerald-400 font-black">${formatUSD(totalBotUsd)}</span>
+                </div>`;
+            }
+
+            if (statusSpan) { statusSpan.className = botStatusColor; statusSpan.innerText = botStatusText; }
+            if (botInfoContainer) botInfoContainer.innerHTML = botInfoHtml;
+            if (volBtn) {
+                volBtn.innerText = botBtnText;
+                volBtn.className = volBot && volBot.active 
+                    ? 'w-full bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 rounded-lg py-2.5 text-[10px] font-bold transition-all uppercase tracking-wider'
+                    : 'w-full bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 rounded-lg py-2.5 text-[10px] font-bold transition-all uppercase tracking-wider';
+            }
+            if (amtInput) {
+                if (volBot && volBot.active) amtInput.classList.add('hidden'); // Oculta el input si está trabajando
+                else amtInput.classList.remove('hidden');
+            }
+        } else {
+            fixedCreatorTools.classList.add('hidden');
+        }
+    }
     const holders = Object.values(STATE.players).filter(p => p.portfolio[token.id] > 0)
         .map(p => ({ ...p, tokenAmount: p.portfolio[token.id], pct: (p.portfolio[token.id]/token.initialSupply)*100 }))
         .sort((a,b) => b.tokenAmount - a.tokenAmount).slice(0, 50);
@@ -2877,9 +3201,44 @@ function renderGiftModal() {
 }
 
 function generateChartSVG(token, w, h, simplified) {
-    const data = [...token.history];
-    if (token.currentCandle) data.push(token.currentCandle);
-    const viewData = data.slice(-100);
+    let baseData = [...token.history];
+    if (token.currentCandle) baseData.push(token.currentCandle);
+    
+    // AGREGACIÓN DE VELAS SEGÚN EL TIMEFRAME (1s o 15s)
+    let data = [];
+    const tf = STATE.chartTimeframe || 1;
+    if (tf > 1 && !simplified) {
+        let currentAgg = null;
+        const msPerFrame = tf * 1000;
+        baseData.forEach(candle => {
+            const aggTime = Math.floor(candle.time / msPerFrame) * msPerFrame;
+            if (!currentAgg || currentAgg.time !== aggTime) {
+                if (currentAgg) data.push(currentAgg);
+                currentAgg = { ...candle, time: aggTime };
+            } else {
+                currentAgg.high = Math.max(currentAgg.high, candle.high);
+                currentAgg.low = Math.min(currentAgg.low, candle.low);
+                currentAgg.close = candle.close;
+                currentAgg.vol += candle.vol;
+            }
+        });
+        if (currentAgg) data.push(currentAgg);
+    } else {
+        data = baseData;
+    }
+
+    let viewData = [];
+    if (simplified) {
+        viewData = data.slice(-100); // Gráficas pequeñas del mercado
+    } else {
+        // Gráfica grande interactiva
+        let zoom = STATE.chartConfig?.zoom || 100;
+        let offset = STATE.chartConfig?.offset || 0;
+        const startIdx = Math.max(0, data.length - zoom - offset);
+        const endIdx = Math.max(1, data.length - offset);
+        viewData = data.slice(startIdx, endIdx);
+    }
+
     if(viewData.length === 0) return '';
 
     const pad = simplified ? 0 : 20;
@@ -2956,6 +3315,175 @@ window.onload = () => {
 
     if(botInterval) clearInterval(botInterval); startBotBrain();
     requestUIRender(true);
+};
+// --- MOTOR INTERACTIVO DE LA GRÁFICA (ZOOM Y PANNING) ---
+function setupChartInteractions(container) {
+    if (container.hasAttribute('data-interactive')) return;
+    container.setAttribute('data-interactive', 'true');
+    container.style.cursor = 'grab';
+    container.style.touchAction = 'none'; 
+
+    let isDragging = false;
+    let startX = 0;
+    let currentOffsetAtStart = 0;
+
+    // ZOOM CON RUEDA (PC)
+    container.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        if (!STATE.chartConfig) STATE.chartConfig = { zoom: 100, offset: 0 };
+        const zoomStep = Math.ceil(STATE.chartConfig.zoom * 0.1);
+        STATE.chartConfig.zoom += e.deltaY > 0 ? zoomStep : -zoomStep;
+        STATE.chartConfig.zoom = Math.max(10, Math.min(STATE.chartConfig.zoom, 1000));
+        UpdateChartVisualsOnly();
+    }, { passive: false });
+
+    // MOVILIDAD (PC)
+    container.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        startX = e.pageX;
+        currentOffsetAtStart = STATE.chartConfig?.offset || 0;
+        container.style.cursor = 'grabbing';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const diffX = e.pageX - startX;
+        const candleDiff = Math.floor(diffX / 5);
+        const tf = STATE.chartTimeframe || 1;
+        const token = STATE.tokens[STATE.selectedTokenId];
+        if (!token) return;
+        const totalCandles = Math.ceil((token.history.length + 1) / tf);
+        const maxOffset = Math.max(0, totalCandles - (STATE.chartConfig?.zoom || 100));
+        STATE.chartConfig.offset = Math.max(0, Math.min(maxOffset, currentOffsetAtStart + candleDiff));
+        UpdateChartVisualsOnly();
+    });
+
+    window.addEventListener('mouseup', () => { isDragging = false; container.style.cursor = 'grab'; });
+
+    // ZOOM Y MOVILIDAD TÁCTIL (MÓVIL)
+    let initialPinchDist = null;
+    let initialZoomAtPinch = 100;
+
+    container.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            isDragging = true;
+            startX = e.touches[0].pageX;
+            currentOffsetAtStart = STATE.chartConfig?.offset || 0;
+        } else if (e.touches.length === 2) {
+            isDragging = false;
+            initialPinchDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+            initialZoomAtPinch = STATE.chartConfig?.zoom || 100;
+        }
+    }, { passive: false });
+
+    container.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 1 && isDragging) {
+            const diffX = e.touches[0].pageX - startX;
+            const candleDiff = Math.floor(diffX / 5);
+            const token = STATE.tokens[STATE.selectedTokenId];
+            if (!token) return;
+            const totalCandles = Math.ceil((token.history.length + 1) / (STATE.chartTimeframe || 1));
+            const maxOffset = Math.max(0, totalCandles - (STATE.chartConfig?.zoom || 100));
+            STATE.chartConfig.offset = Math.max(0, Math.min(maxOffset, currentOffsetAtStart + candleDiff));
+            UpdateChartVisualsOnly();
+        } else if (e.touches.length === 2 && initialPinchDist) {
+            const dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+            const scale = initialPinchDist / dist;
+            STATE.chartConfig.zoom = Math.max(10, Math.min(initialZoomAtPinch * scale, 1000));
+            UpdateChartVisualsOnly();
+        }
+    }, { passive: false });
+
+    container.addEventListener('touchend', () => { isDragging = false; initialPinchDist = null; });
+}
+
+function UpdateChartVisualsOnly() {
+    const token = STATE.tokens[STATE.selectedTokenId];
+    if (!token) return;
+    const chEl = document.getElementById('tok-chart');
+    if (chEl) chEl.innerHTML = generateChartSVG(token, chEl.clientWidth, chEl.clientHeight, false);
+}
+// ==========================================
+// MOTOR DE REDIMENSIONADO SPLIT-SCREEN
+// ==========================================
+function setupResizableSplitter() {
+    const container = document.getElementById('split-container');
+    const resizer = document.getElementById('resizer-h');
+    const paneChart = document.getElementById('pane-chart');
+    const paneTrade = document.getElementById('pane-trade');
+
+    if (!container || !resizer || !paneChart || !paneTrade) return;
+
+    let isResizing = false;
+
+    // Iniciar arrastre (PC y Móvil)
+    const startResize = (e) => {
+        isResizing = true;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none'; // Evitar seleccionar texto al arrastrar
+        resizer.classList.add('bg-emerald-500'); // Feedback visual
+    };
+
+    // Detener arrastre (PC y Móvil)
+    const stopResize = () => {
+        if (!isResizing) return;
+        isResizing = false;
+        document.body.style.cursor = 'default';
+        document.body.style.userSelect = 'auto';
+        resizer.classList.remove('bg-emerald-500');
+        // Forzar actualización de la gráfica para que se ajuste al nuevo tamaño
+        if(typeof UpdateChartVisualsOnly === 'function') UpdateChartVisualsOnly();
+    };
+
+    // Lógica de movimiento (PC y Móvil)
+    const resize = (e) => {
+        if (!isResizing) return;
+
+        let clientX;
+        if (e.type === 'touchmove') {
+            clientX = e.touches[0].clientX;
+        } else {
+            clientX = e.clientX;
+        }
+
+        const containerRect = container.getBoundingClientRect();
+        const containerWidth = containerRect.width;
+        
+        // Calcular la posición relativa en porcentaje (0 a 100)
+        let pointerX = clientX - containerRect.left;
+        let percentage = (pointerX / containerWidth) * 100;
+
+        // Aplicar límites (mínimo 20% para la gráfica, mínimo 300px para el trade)
+        const minChartPct = (200 / containerWidth) * 100; // min-w-[200px]
+        const minTradePct = (300 / containerWidth) * 100; // min-w-[300px]
+        
+        percentage = Math.max(minChartPct, Math.min(percentage, 100 - minTradePct));
+
+        // Aplicar anchos
+        paneChart.style.width = `${percentage}%`;
+        paneTrade.style.width = `${100 - percentage}%`;
+    };
+
+    // Event Listeners Ratón (PC)
+    resizer.addEventListener('mousedown', startResize);
+    window.addEventListener('mousemove', resize);
+    window.addEventListener('mouseup', stopResize);
+
+    // Event Listeners Táctil (Móvil)
+    resizer.addEventListener('touchstart', startResize, { passive: true });
+    window.addEventListener('touchmove', resize, { passive: false }); // preventDefault necesario aquí
+    window.addEventListener('touchend', stopResize);
+}
+
+// Enganchar el redimensionador cada vez que se navega al detalle de un token
+// Enganchar el redimensionador cada vez que se navega al detalle de un token
+const originalUpdateUI = window.updateUI;
+window.updateUI = function() {
+    if (typeof originalUpdateUI === 'function') originalUpdateUI();
+    if (STATE.selectedTokenId) {
+        // Un pequeño delay para asegurar que el DOM se renderizó
+        setTimeout(setupResizableSplitter, 50);
+    }
 };
 </script>
 </body>
