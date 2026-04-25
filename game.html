@@ -506,6 +506,15 @@ function initNetwork(roomId, mode, customBotCount = 50) {
                 const data = JSON.parse(message.toString());
                 if (mode === 'host' && topic.endsWith('/in')) processMessageAsHost(data);
                 else if (mode === 'client' && topic.endsWith('/out')) processMessageAsClient(data);
+                if (type === 'CHART_DATA' && target === STATE.myProfile.id) {
+        if (STATE.tokens[payload.tokenId]) {
+            STATE.tokens[payload.tokenId].history = payload.history;
+            // Solo redibujar si el usuario sigue viendo ese token
+            if (STATE.selectedTokenId === payload.tokenId) {
+                UpdateChartVisualsOnly();
+            }
+        }
+    }
             } catch(e) {}
         });
 
@@ -516,6 +525,22 @@ function initNetwork(roomId, mode, customBotCount = 50) {
                 setTimeout(() => { if(STATE.route === 'lobby' || STATE.route === 'game') initNetwork(roomId, mode, customBotCount); }, 1500);
             }
         });
+    }
+    if (type === 'ACTION_FETCH_CHART') {
+        const token = STATE.tokens[payload.tokenId];
+        if (token && token.history) {
+            const chartPacket = { 
+                type: 'CHART_DATA', 
+                payload: { tokenId: payload.tokenId, history: token.history }, 
+                target: senderId 
+            };
+            // Intentar enviar por P2P (más rápido) o por MQTT si no hay conexión directa
+            if (window.clientConns && window.clientConns[senderId] && window.clientConns[senderId].open) {
+                window.clientConns[senderId].send(chartPacket);
+            } else if (mqttClient) {
+                mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify(chartPacket));
+            }
+        }
     }
 
     // WEBRTC P2P DATA (LA RUTA ULTRA RÁPIDA 0MS)
@@ -926,11 +951,11 @@ function getCompressedState() {
     topBots.forEach(b => compressedPlayers[b.id] = b);
 const compressedTokens = {};
     Object.values(STATE.tokens).forEach(t => {
-        compressedTokens[t.id] = {
-            ...t,
-            // Enviamos el historial largo para que la gráfica no se vea cortada al moverla
-            history: t.history ? t.history.slice(-1000) : [] 
-        };
+        const tCopy = { ...t };
+        // ELIMINAR EL HISTORIAL DEL SYNC GLOBAL:
+        // Esto reduce drásticamente el peso de los datos y baja el ping.
+        delete tCopy.history; 
+        compressedTokens[t.id] = tCopy;
     });
     return { 
         players: compressedPlayers, 
@@ -1524,6 +1549,9 @@ function startBotBrain() {
 
 // CLIENT ACTIONS DISPATCHER
 function dispatchAction(type, payload) {
+    if(type==='ACTION_FETCH_CHART') {
+             // En modo local no hace falta pedir nada, el Host ya tiene los datos.
+        }
     if (STATE.roomConfig.isHost) {
         if(type==='ACTION_TRADE') { handleTradeHost(payload.tokenId, payload.isBuy, payload.amount, STATE.myProfile.id); broadcastState(); }
         if(type==='ACTION_CHAT') { handleChatHost(payload.msg, STATE.myProfile.id, false); }
@@ -1620,7 +1648,18 @@ if(type==='ACTION_TOGGLE_LIVE') {
 
 // RENDERING UI ENGINE
 function switchTab(tabId) { STATE.activeTab = tabId; STATE.selectedTokenId = null; STATE._renderedTabId = null; updateUI(); }
-function selectToken(id) { STATE.selectedTokenId = id; STATE.tradeAmount = ''; STATE._renderedTabId = null; STATE.chartConfig = { zoom: 100, offset: 0 }; updateUI(); }
+function selectToken(id) { 
+    STATE.selectedTokenId = id; 
+    STATE.tradeAmount = ''; 
+    STATE._renderedTabId = null; 
+    STATE.chartConfig = { zoom: 100, offset: 0 }; 
+    
+    // SOLICITAR GRÁFICA AL HOST: 
+    // Solo pedimos los datos de esta moneda específica para ahorrar red.
+    dispatchAction('ACTION_FETCH_CHART', { tokenId: id }); 
+    
+    updateUI(); 
+}
 function setTradeType(type) { STATE.tradeType = type; STATE.tradeAmount = ''; STATE._renderedTabId = null; updateUI(); }
 
 function addToast(msg, icon) {
