@@ -243,43 +243,11 @@ function saveGame() {
 
 function loadGameFromStorage() {
     try {
-        const rawData = sessionStorage.getItem('degen_savegame') || localStorage.getItem('degen_autosave');
-        if (!rawData) {
-            addToast("No hay partida guardada.", "❌");
-            setTimeout(()=>window.location.href='index.html', 2000);
-            return;
-        }
-        
-        const loaded = JSON.parse(rawData);
+        const loaded = JSON.parse(sessionStorage.getItem('degen_savegame') || localStorage.getItem('degen_autosave'));
         if(loaded && loaded.players && loaded.roomConfig) {
-            STATE.players = loaded.players; 
-            STATE.tokens = loaded.tokens || {};
-            STATE.roomConfig = loaded.roomConfig; 
-            STATE.chat = loaded.chat || []; 
-            STATE.posts = loaded.posts || []; 
-            STATE.gameState = loaded.gameState || 'waiting';
+            STATE.players = loaded.players; STATE.tokens = loaded.tokens || {};
+            STATE.roomConfig = loaded.roomConfig; STATE.chat = loaded.chat || []; STATE.posts = loaded.posts || []; STATE.gameState = loaded.gameState || 'waiting';
             STATE.races = loaded.races || {};
-            
-            // --- PARCHE DE COMPATIBILIDAD (Migración de partidas viejas) ---
-            Object.values(STATE.players).forEach(p => {
-                if (p.isBot && !p.initialBalance) p.initialBalance = Math.max(p.solBalance || 50, 50);
-                if (!p.portfolio) p.portfolio = {};
-                if (!p.tradesInfo) p.tradesInfo = {};
-                if (!p.luxuries) p.luxuries = [];
-                if (p.followers === undefined) p.followers = 0;
-                if (p.reputation === undefined) p.reputation = 1;
-            });
-            
-            Object.values(STATE.tokens).forEach(t => {
-                if (!t.history) t.history = [];
-                if (!t.initialSupply) t.initialSupply = 1000000000;
-                if (!t.currentCandle) {
-                    const cp = t.tokenPool > 0 ? (t.solPool / t.tokenPool) : 0.00002;
-                    t.currentCandle = { time: Date.now(), open: cp, high: cp, low: cp, close: cp, vol: 0 };
-                }
-            });
-            // ---------------------------------------------------------------
-
             STATE.totalPlayerCount = Object.keys(STATE.players).length;
             
             const hostProfile = Object.values(STATE.players).find(p => !p.isBot) || STATE.players[Object.keys(STATE.players)[0]];
@@ -289,17 +257,9 @@ function loadGameFromStorage() {
             initNetwork(STATE.roomConfig.code, mode, STATE.roomConfig.botCount);
             
             STATE.route = STATE.gameState === 'playing' ? 'game' : 'lobby';
-            addToast("Partida restaurada", "✅"); 
-            requestUIRender(true);
-        } else { 
-            addToast("Datos corruptos o formato antiguo.", "❌"); 
-            setTimeout(()=>window.location.href='index.html', 2000); 
-        }
-    } catch(err) { 
-        console.error("Error al cargar la partida:", err); // Para ver el error exacto en consola por si acaso
-        addToast("Error leyendo archivo.", "❌"); 
-        setTimeout(()=>window.location.href='index.html', 2000); 
-    }
+            addToast("Partida restaurada", "✅"); requestUIRender(true);
+        } else { addToast("No se encontraron datos.", "❌"); setTimeout(()=>window.location.href='index.html', 2000); }
+    } catch(err) { addToast("Error leyendo archivo.", "❌"); setTimeout(()=>window.location.href='index.html', 2000); }
 }
 
 // ==========================================
@@ -427,10 +387,12 @@ window.adjustBots = function(targetCount) {
             else { startBal = 20 + Math.random() * 30; } // Scalper, Hodler
             
             const id = `bot_${Date.now()}_${Math.random().toString(36).substr(2,5)}`;
-           STATE.players[id] = { 
+            const isRich = startBal >= 10000;
+            STATE.players[id] = { 
                 id: id, name: `${strategy}_Bot${startIndex + i}`, avatar: '🤖', 
                 solBalance: startBal, initialBalance: startBal, portfolio: {}, isBot: true, strategy: strategy,
-                reputation: 1, luxuries: [], tradesInfo: {}, solStaked: 0, followers: botFollowers,
+                reputation: isRich ? 80 : 1, luxuries: [], tradesInfo: {}, solStaked: 0, followers: botFollowers,
+                isVerified: (isRich || botFollowers > 5000), // Bots ricos y famosos tienen cuenta DegenX vinculada
                 carTuning: { speedLevel: 1, accelLevel: 1 }
             };
         }
@@ -546,15 +508,6 @@ function initNetwork(roomId, mode, customBotCount = 50) {
                 const data = JSON.parse(message.toString());
                 if (mode === 'host' && topic.endsWith('/in')) processMessageAsHost(data);
                 else if (mode === 'client' && topic.endsWith('/out')) processMessageAsClient(data);
-                if (type === 'CHART_DATA' && target === STATE.myProfile.id) {
-        if (STATE.tokens[payload.tokenId]) {
-            STATE.tokens[payload.tokenId].history = payload.history;
-            // Solo redibujar si el usuario sigue viendo ese token
-            if (STATE.selectedTokenId === payload.tokenId) {
-                UpdateChartVisualsOnly();
-            }
-        }
-    }
             } catch(e) {}
         });
 
@@ -565,22 +518,6 @@ function initNetwork(roomId, mode, customBotCount = 50) {
                 setTimeout(() => { if(STATE.route === 'lobby' || STATE.route === 'game') initNetwork(roomId, mode, customBotCount); }, 1500);
             }
         });
-    }
-    if (type === 'ACTION_FETCH_CHART') {
-        const token = STATE.tokens[payload.tokenId];
-        if (token && token.history) {
-            const chartPacket = { 
-                type: 'CHART_DATA', 
-                payload: { tokenId: payload.tokenId, history: token.history }, 
-                target: senderId 
-            };
-            // Intentar enviar por P2P (más rápido) o por MQTT si no hay conexión directa
-            if (window.clientConns && window.clientConns[senderId] && window.clientConns[senderId].open) {
-                window.clientConns[senderId].send(chartPacket);
-            } else if (mqttClient) {
-                mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify(chartPacket));
-            }
-        }
     }
 
     // WEBRTC P2P DATA (LA RUTA ULTRA RÁPIDA 0MS)
@@ -711,47 +648,11 @@ function startSystemEvents() {
         if (changed) broadcastState();
     }, 2000);
     
-    if (newsInterval) clearInterval(newsInterval);
+   if (newsInterval) clearInterval(newsInterval);
     newsInterval = setInterval(() => {
-        if (STATE.gameState !== 'playing' || !STATE.roomConfig.botsEnabled) return;
-        const tKeys = Object.keys(STATE.tokens);
-        if (tKeys.length === 0 || Math.random() > 0.4) return; 
-        
-        const randomTokenId = tKeys[Math.floor(Math.random() * tKeys.length)];
-        const token = STATE.tokens[randomTokenId];
-        const vRes = token.virtualSol || VIRTUAL_USD_RESERVE;
-        if ((token.solPool - vRes) < 1) return; 
-        
-        const isFud = Math.random() > 0.6;
-        let pText = '';
-        if(isFud) {
-            const fudMessages = [
-                `Acabo de ver el contrato de $${token.ticker} y tiene mint authority. ¡Cuidado! 🚨`,
-                `El dev de $${token.ticker} está moviendo liquidez, huele a rug pull masivo.`,
-                `No toquen $${token.ticker}, es una trampa mortal de ballenas.📉`
-            ];
-            pText = fudMessages[Math.floor(Math.random() * fudMessages.length)];
-        } else {
-            const shillMessages = [
-                `Elon acaba de seguir a la cuenta de $${token.ticker} 👀🚀`,
-                `Rumores fuertes de que $${token.ticker} se lista en Binance mañana. Entren ahora o lloren después.`,
-                `La comunidad de $${token.ticker} es la más fuerte que he visto. 100x programado.💎🤲`
-            ];
-            pText = shillMessages[Math.floor(Math.random() * shillMessages.length)];
-        }
-        
-        handlePostHost(pText, 'SYSTEM_MM');
-        
-        const simVol = Math.random() * 8 + 2; 
-        if (isFud) {
-             const mm = STATE.players['SYSTEM_MM'];
-             mm.portfolio[randomTokenId] = (mm.portfolio[randomTokenId] || 0) + calcTokensOut(simVol, token.solPool, token.tokenPool);
-             handleTradeHost(randomTokenId, false, STATE.players['SYSTEM_MM'].portfolio[randomTokenId], 'SYSTEM_MM', true);
-        } else {
-            handleTradeHost(randomTokenId, true, simVol, 'SYSTEM_MM', true);
-        }
-        broadcastState();
-    }, 25000); 
+        // MODO SILENCIO: La exchange ya no promociona nada, el mercado es 100% orgánico y difícil.
+        return; 
+    }, 100000);
 
     if (stakingInterval) clearInterval(stakingInterval);
     stakingInterval = setInterval(() => {
@@ -796,6 +697,14 @@ function processMessageAsHost(data) {
     }
     
     if (type === 'ACTION_TRADE') { handleTradeHost(payload.tokenId, payload.isBuy, payload.amount, senderId); broadcastState(); }
+    if (type === 'ACTION_GET_FULL_CHART') {
+        const t = STATE.tokens[payload.tokenId];
+        if (t) {
+            const msg = { type: 'SYNC_FULL_CHART', target: senderId, payload: { id: t.id, history: t.history } };
+            if (window.clientConns && window.clientConns[senderId] && window.clientConns[senderId].open) window.clientConns[senderId].send(msg);
+            else if (mqttClient) mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify(msg));
+        }
+    }
     if (type === 'ACTION_SET_SLTP') {
         const player = STATE.players[senderId];
         if(player && player.tradesInfo && player.tradesInfo[payload.tokenId]) {
@@ -848,13 +757,6 @@ if (type === 'ACTION_TOGGLE_LIVE') {
             if(STATE.tokens[payload.tokenId].isLive) {
                 handleChatHost(`🔴 ¡El Dev de $${STATE.tokens[payload.tokenId].ticker} acaba de encender DIRECTO! ¡Hay hype masivo en la sala! 🎥`, senderId || STATE.players[senderId]?.name, true);
             }
-            broadcastState();
-        }
-    }
-    if (type === 'ACTION_SET_SOCIAL') {
-        if(STATE.tokens[payload.tokenId]) {
-            STATE.tokens[payload.tokenId].socialLink = payload.link;
-            handleChatHost(`🔗 ¡El Dev de $${STATE.tokens[payload.tokenId].ticker} vinculó sus redes sociales! Pasa el ratón sobre 'Redes' para ver.`, senderId || STATE.myProfile.id, true);
             broadcastState();
         }
     }
@@ -948,13 +850,25 @@ function processMessageAsClient(data) {
         }
     }
     
-    if (type === 'STATE_SYNC') {
+   if (type === 'STATE_SYNC') {
         if (window.handshakeInterval) clearInterval(window.handshakeInterval);
         if (STATE.lastSyncTime && time && time < STATE.lastSyncTime) return; 
         if (time) STATE.lastSyncTime = time;
 
         STATE.players = payload.players; 
-        STATE.tokens = payload.tokens; 
+        
+        // FUSIÓN DE HISTORIAL: Evita que el paquete optimizado de red borre la gráfica Pro completa que estamos viendo
+        if (STATE.selectedTokenId && STATE.tokens[STATE.selectedTokenId] && payload.tokens[STATE.selectedTokenId]) {
+            const currentHistory = STATE.tokens[STATE.selectedTokenId].history || [];
+            const incomingHistory = payload.tokens[STATE.selectedTokenId].history || [];
+            if (currentHistory.length > 100) {
+                let merged = [...currentHistory];
+                const lastTime = merged[merged.length - 1]?.time || 0;
+                merged.push(...incomingHistory.filter(c => c.time > lastTime));
+                payload.tokens[STATE.selectedTokenId].history = merged;
+            }
+        }
+        STATE.tokens = payload.tokens;
         STATE.gameState = payload.gameState; 
         STATE.chat = payload.chat;
         STATE.races = payload.races || {};
@@ -972,7 +886,14 @@ function processMessageAsClient(data) {
         setTimeout(() => window.location.href = 'index.html', 2000);
     }
     if (type === 'EVENT_ALERT') { if (STATE.trackedIds.has(senderId)) addToast(payload.msg, payload.icon); }
-}
+        if (type === 'SYNC_FULL_CHART' && target === STATE.myProfile.id) {
+            if(STATE.tokens[payload.id]) {
+                STATE.tokens[payload.id].history = payload.history;
+                if(STATE.selectedTokenId === payload.id && typeof UpdateChartVisualsOnly === 'function') UpdateChartVisualsOnly();
+            }
+        }
+    }
+
 
 // ---------------- ALGORITMO COMPRESIÓN (PING 0MS REAL) ----------------
 function getCompressedState() {
@@ -991,11 +912,11 @@ function getCompressedState() {
     topBots.forEach(b => compressedPlayers[b.id] = b);
 const compressedTokens = {};
     Object.values(STATE.tokens).forEach(t => {
-        const tCopy = { ...t };
-        // ELIMINAR EL HISTORIAL DEL SYNC GLOBAL:
-        // Esto reduce drásticamente el peso de los datos y baja el ping.
-        delete tCopy.history; 
-        compressedTokens[t.id] = tCopy;
+        compressedTokens[t.id] = {
+            ...t,
+            // OPTIMIZACIÓN DE RED: Solo enviamos las últimas 100 velas por defecto. Ahorra 90% de PING global.
+            history: t.history ? t.history.slice(-100) : [] 
+        };
     });
     return { 
         players: compressedPlayers, 
@@ -1089,7 +1010,9 @@ function handlePostHost(text, playerId) {
         authorName: author.name,
         authorAvatar: author.avatar,
         text: text.substring(0, 280),
-        time: Date.now()
+        time: Date.now(),
+        views: 0,
+        likes: 0
     });
     STATE.posts = STATE.posts.slice(0, 80); 
     broadcastState();
@@ -1128,15 +1051,31 @@ if (!currentCandle || Date.now() - currentCandle.time > 1000) {
         player.tradesInfo[tokenId] = { entryPrice: getPrice(token.solPool, token.tokenPool) };
         
         // CopyTrading Hook
-        if(!silent && player.followers > 50 && (player.reputation > 50 || !player.isBot)) {
-            const numCopiers = Math.min(Math.floor(player.followers / 100), 10);
-            const copyBots = Object.values(STATE.players).filter(p => p.isBot && p.strategy === 'CopyTrader' && p.solBalance > 5);
-            for(let i=0; i<numCopiers && i<copyBots.length; i++) {
-                setTimeout(() => {
-                    handleTradeHost(tokenId, true, copyBots[i].solBalance * 0.2, copyBots[i].id, true);
-                    broadcastState();
-                }, 1000 + Math.random()*3000);
-            }
+       // CopyTrading Hook (Mejorado y Realista)
+        if(!silent && player.followers > 100 && (player.reputation > 50 || !player.isBot)) {
+            // 1. Depende MUCHO de los seguidores (Ej: 10,000 seguidores = 80% de convencerlos, 1000 seguidores = 8%)
+            const convictionRate = Math.min(player.followers / 12000, 0.85); 
+            
+            // 2. Calculamos el 1% de la población total de bots
+            const totalBots = Object.values(STATE.players).filter(p => p.isBot && !p.id.startsWith('SYSTEM_'));
+            const maxCopiers = Math.max(1, Math.floor(totalBots.length * 0.01)); 
+            
+            // Filtramos solo a los CopyTraders, los mezclamos al azar y tomamos solo ese 1%
+            const copyBots = totalBots.filter(p => p.strategy === 'CopyTrader' && p.solBalance > 5)
+                                      .sort(() => 0.5 - Math.random()) 
+                                      .slice(0, maxCopiers); 
+            
+            copyBots.forEach(bot => {
+                // 3. "Pensarán si de verdad hacerlo" - Tiran los dados contra tu convictionRate
+                if (Math.random() < convictionRate) {
+                    setTimeout(() => {
+                        // Si se convencen, invierten entre un 10% y 30% de su balance
+                        const investAmount = bot.solBalance * (0.1 + Math.random() * 0.2);
+                        handleTradeHost(tokenId, true, investAmount, bot.id, true);
+                        broadcastState();
+                    }, 1000 + Math.random() * 5000); // Tardan entre 1 y 6 segundos en decidirse y ejecutar
+                }
+            });
         }
 
     } else {
@@ -1179,13 +1118,15 @@ if (!currentCandle || Date.now() - currentCandle.time > 1000) {
         postMsg = `Acabo de ver a $${token.ticker} tocar Raydium. El dev es un chad. Enhorabuena. 🔥`;
         if(creator) { 
             creator.reputation = Math.min(100, (creator.reputation || 1) + 20); 
-            creator.followers += 500 + Math.floor(Math.random() * 500); 
+            // 50% menos de seguidores por completar la curva a Raydium (Antes 500 a 1000, ahora 250 a 500)
+            creator.followers += 250 + Math.floor(Math.random() * 250); 
         }
     } else if (mcapUsd >= 1000000 && !token.milestones.m1m) { 
         token.milestones.m1m = true; 
         milestoneMsg = `🚀 $${token.ticker} ALCANZÓ $1M MCap!`; 
         postMsg = `$${token.ticker} superó el Millón de Market Cap. ¿Quién más está holdeando? 💎`;
-        if(creator) { creator.followers += 100 + Math.floor(Math.random() * 100); }
+        // 50% menos de seguidores por tocar $1M MCap (Antes 100 a 200, ahora 50 a 100)
+        if(creator) { creator.followers += 50 + Math.floor(Math.random() * 50); }
     }
 
     if (!silent && milestoneMsg) {
@@ -1226,16 +1167,17 @@ function handleLaunchHost(name, ticker, image, devBuy, playerId, coFounders = []
         const shareOfBuy = actualDevBuy > 0 ? (available / totalAvailableForBuy) * actualDevBuy : 0;
         const sharePct = actualDevBuy > 0 ? (shareOfBuy / actualDevBuy) : (1 / numCreators);
         
-        STATE.players[id].solBalance -= (feePerPerson + shareOfBuy);
+       STATE.players[id].solBalance -= (feePerPerson + shareOfBuy);
         STATE.players[id].reputation = Math.min(100, (STATE.players[id].reputation || 1) + 0.5);
-        STATE.players[id].followers += 10;
+        STATE.players[id].followers += 5; // 50% menos seguidores por crear token
         
         contributions[id] = { cost: feePerPerson + shareOfBuy, share: sharePct };
     });
     
     // Logica AMM Realista: La inversión del dev añade a la liquidez virtual base (x3)
-    const vSol = VIRTUAL_USD_RESERVE + (actualDevBuy * 3);
-    const cLim = BONDING_CURVE_LIMIT + (actualDevBuy * 3);
+   // Cambiamos el multiplicador de vSol y cLim de 3 a 1.5 (50% menos impacto de liquidez inicial)
+    const vSol = VIRTUAL_USD_RESERVE + (actualDevBuy * 1.5);
+    const cLim = BONDING_CURVE_LIMIT + (actualDevBuy * 1.5);
     const initialPrice = vSol / 1000000000; 
     
     const tokenId = ticker.toUpperCase() + '_' + Date.now();
@@ -1346,7 +1288,8 @@ function handleBuyLuxuryHost(itemId, playerId) {
     }
 
     player.reputation = Math.min(100, (player.reputation || 1) + item.rep);
-    player.followers += item.rep * 10; 
+    // Los lujos ahora solo dan probabilidad de hacerse viral
+    player.viralMultiplier = (player.viralMultiplier || 1.0) + (item.rep * 0.05); 
     STATE.chat.unshift({ id: Date.now(), sender: 'System', text: `🛒 ${player.name} presumió su nuevo ${item.name} ${item.icon}`, sys: true });
     STATE.chat = STATE.chat.slice(0, 80); 
     broadcastState();
@@ -1524,94 +1467,71 @@ function handleTuneCarHost(type, playerId) {
 // BOT BRAIN OPTIMIZADO
 // BOT BRAIN OPTIMIZADO
 function startBotBrain() {
-    if(botInterval) clearInterval(botInterval);
+   if(botInterval) clearInterval(botInterval);
     botInterval = setInterval(() => {
         if (!STATE.roomConfig.isHost || !STATE.roomConfig.botsEnabled || STATE.gameState !== 'playing') return;
+        
         const botList = Object.values(STATE.players).filter(p => p.isBot && !p.id.startsWith('SYSTEM_'));
         if (botList.length === 0) return;
 
+        // --- LÓGICA DE RECUPERACIÓN DE CAPITAL (Net Worth Real) ---
         let needsBroadcast = false;
         botList.forEach(bot => {
-            if (!bot.initialBalance) bot.initialBalance = Math.max(bot.solBalance, 50);
+            let estVal = bot.solBalance + (bot.solStaked || 0);
+            if (bot.portfolio) {
+                Object.keys(bot.portfolio).forEach(tid => {
+                    const t = STATE.tokens[tid];
+                    if (t) estVal += calcSolOut(bot.portfolio[tid], t.solPool, t.tokenPool);
+                });
+            }
+            if (!bot.initialBalance) bot.initialBalance = Math.max(estVal, 50);
             
-            // --- RECUPERACIÓN DE CAPITAL ---
-            if (bot.solBalance >= 1000000) {
-                // Bots Millonarios: Se regeneran si pierden el 10%
-                if (bot.solBalance < bot.initialBalance * 0.9) { bot.solBalance = bot.initialBalance; needsBroadcast = true; }
-            } else {
-                // Bots normales: Se regeneran si pierden el 50%
-                if (bot.solBalance < bot.initialBalance * 0.5) { bot.solBalance = bot.initialBalance; needsBroadcast = true; }
+            // Solo se rellenan si su patrimonio total cae por debajo del 30%
+            if (estVal < bot.initialBalance * 0.3) {
+                bot.solBalance += (bot.initialBalance - estVal); // Inyección de capital
+                needsBroadcast = true;
             }
         });
 
         const tokenKeys = Object.keys(STATE.tokens);
+        // Para no destruir el rendimiento con 10,000 bots, limitamos las acciones por tick a máx 100 bots.
         const activeCount = Math.min(100, Math.max(5, Math.floor(botList.length * 0.02)));
         const activeBots = botList.sort(() => 0.5 - Math.random()).slice(0, activeCount);
         let didTrade = false;
 
-       activeBots.forEach(bot => {
+        activeBots.forEach(bot => {
             Object.keys(bot.portfolio).forEach(tokenId => {
                 const amount = bot.portfolio[tokenId]; if (amount <= 0) return;
                 const token = STATE.tokens[tokenId]; if (!token) return;
-                
+
                 const currentPrice = getPrice(token.solPool, token.tokenPool);
                 const entryPrice = bot.tradesInfo?.[tokenId]?.entryPrice || currentPrice;
                 const pnlPercent = ((currentPrice - entryPrice) / entryPrice) * 100;
                 let sellRatio = 0;
                 
-                // --- LÓGICA AVANZADA DE ESTRATEGIAS DE VENTA ---
-                switch(bot.strategy) {
-                    case 'Scalper':
-                        // Toma ganancias súper rápido (+10%), corta pérdidas rápido (-5%)
-                        if (pnlPercent >= 10) sellRatio = 0.5; 
-                        if (pnlPercent >= 20) sellRatio = 1.0; 
-                        if (pnlPercent <= -5) sellRatio = 1.0; 
-                        break;
-                    case 'PaperHands':
-                        // Manos de papel: Vende con cualquier profit mínimo y entra en pánico en rojo
-                        if (pnlPercent >= 5) sellRatio = 1.0; 
-                        if (pnlPercent <= -2) sellRatio = 1.0; 
-                        break;
-                    case 'Whale':
-                        // Ballenas: Escalan sus ventas poco a poco para no destruir la gráfica
-                        if (pnlPercent >= 30) sellRatio = 0.2; 
-                        if (pnlPercent >= 100) sellRatio = 0.5;
-                        if (pnlPercent <= -30) sellRatio = 0.5; 
-                        break;
-                    case 'Degen':
-                        // Degens: "Diamond hands". Buscan el x2 (+100%) o mueren holdeando (-80%)
-                        if (pnlPercent >= 100) sellRatio = 0.5; 
-                        if (pnlPercent <= -80) sellRatio = 1.0; 
-                        break;
-                    case 'Sniper':
-                        // Entran rápido y salen con buen profit
-                        if (pnlPercent >= 50) sellRatio = 1.0; 
-                        if (pnlPercent <= -15) sellRatio = 1.0;
-                        break;
-                    case 'Hodler':
-                        // Nunca venden en pérdida. Solo toman ganancia si hacen un x5 (+400%)
-                        if (pnlPercent >= 400) sellRatio = 0.25; 
-                        break;
-                    case 'RugPuller':
-                        // Dumpers tóxicos: Si ven 25% de profit, hay 30% de chance de que tiren TODO
-                        if (pnlPercent >= 25 && Math.random() < 0.3) sellRatio = 1.0; 
-                        if (pnlPercent <= -15) sellRatio = 1.0;
-                        break;
-                    default: 
-                        // Estrategia estándar (CopyTrader, VolumeSniper)
-                        if (pnlPercent >= 40) sellRatio = 0.5;
-                        if (pnlPercent <= -20) sellRatio = 1.0;
-                        break;
+               // --- MODO PROFIT HUNTER (PELEA POR GANANCIA Y VENDEN RÁPIDO) ---
+                const pnlFact = pnlPercent;
+                
+                if (bot.strategy === 'RugPuller' && pnlFact > 50) sellRatio = 1.0;
+                else if (pnlFact <= -10) sellRatio = 1.0; // Stop Loss agresivo para no perder
+                else if (pnlFact >= 15) {
+                    // Si tienen 15% de ganancia, hay un 40% de chance de que vendan todo ya
+                    // Pelean por ser los primeros en tomar profit antes que otros bots
+                    sellRatio = Math.random() < 0.4 ? 1.0 : 0.5;
+                } else if (pnlFact > 5 && Math.random() < 0.1) {
+                    // Incluso con 5%, si ven movimiento, intentan rascar algo de profit
+                    sellRatio = 0.3;
                 }
 
-                // Ejecutar la venta con un factor humano (probabilidad del 80% de actuar en este tick)
-                // y protección anti-crash para que no destruyan la liquidez de un solo golpe.
-                if (sellRatio > 0 && Math.random() < 0.8) { 
+                if (sellRatio > 0) {
+                    // Prevent giant dumps that crash the exchange completely instantly
                     let dumpAmount = amount * sellRatio;
+                    // Calculate how much USD this dump is worth roughly
                     const estUsdValue = (dumpAmount / token.tokenPool) * token.solPool;
-                    const maxSafeDumpUsd = token.solPool * 0.3; // Una ballena no puede drenar más del 30% de la pool de un golpe
+                    const maxSafeDumpUsd = token.solPool * 0.4; // Max dump 40% of pool at once
                     
                     if (estUsdValue > maxSafeDumpUsd) {
+                        // Scale down the dump amount to not drain more than 40% of liquidity
                         dumpAmount = dumpAmount * (maxSafeDumpUsd / estUsdValue);
                     }
                     
@@ -1624,34 +1544,159 @@ function startBotBrain() {
 
             if (bot.solBalance > 0.5 && tokenKeys.length > 0 && Math.random() < 0.3) {
                 const attractiveTokens = tokenKeys.map(tid => STATE.tokens[tid]).filter(t => {
-                    const ageMs = Date.now() - t.createdAt;
-                    let exchMultiplier = t.exchange === 'Binance' ? 5.0 : t.exchange === 'KuCoin' ? 3.0 : t.exchange === 'CoinMarketCap' ? 2.0 : 1.0;
+                    const ageMs = Date.now() - t.createdAt; const creatorRep = STATE.players[t.creatorId]?.reputation || 1;
+                    const vRes = t.virtualSol || VIRTUAL_USD_RESERVE;
+                    
+                    // Exchange factor
+                    let exchMultiplier = 1.0;
+                    if(t.exchange === 'Binance') exchMultiplier = 5.0;
+                    if(t.exchange === 'KuCoin') exchMultiplier = 3.0;
+                    if(t.exchange === 'CoinMarketCap') exchMultiplier = 2.0;
+
+                    // Millionaire logic: Strict risk control
+                    if (bot.solBalance >= 1000000) {
+                        // Only buy established coins with good liquidity or exchanges
+                        if (t.exchange === 'Pump.fun' && (t.solPool - vRes) < 50) return false;
+                        if (creatorRep < 50 && t.exchange === 'Pump.fun') return false;
+                    }
+
+                    if (bot.strategy === 'Sniper') return ageMs < 120000;
+                    if (bot.strategy === 'VolumeSniper') return ageMs > 300000 && t.currentCandle.vol > 10;
+                    if (creatorRep < 10 && bot.strategy !== 'RugPuller' && bot.strategy !== 'Degen') return false; 
+                    
                     let hypeMulti = calculateHypeMultiplier(t.ticker) * exchMultiplier;
-                    if (t.isLive) hypeMulti += 2.0 + ((STATE.players[t.creatorId]?.followers || 0) / 1000);
-                    if (t.dexScreener) hypeMulti += 1.5;
-                    const baseProb = 0.4;
-                    if (Math.random() > (baseProb * hypeMulti)) return false; 
+                    
+                    // FOMO Masivo si está en LIVE (se suma a la variable que ya existe)
+                    if (t.isLive) {
+                        const devFollowers = STATE.players[t.creatorId]?.followers || 0;
+                        hypeMulti += 2.0 + (devFollowers / 1000);
+                    }
+                    
+                // --- NUEVA LÓGICA DE FILTRADO EXIGENTE ---
+                    const isHighlyTrusted = t.dexScreener || t.exchange !== 'Pump.fun';
+                    if (t.dexScreener) {
+                        hypeMulti += 2.0; // Confianza masiva si tiene Dex pagado
+                    }
+let baseProb = isHighlyTrusted ? 0.2 : 0.01; 
+                    
+                    // --- RESTRICCIÓN DE VOLUMEN EXTREMA Y LIQUIDEZ (MODO IMPOSIBLE) ---
+                    const realLiquidity = t.solPool - vRes;
+                    const currentVol = t.currentCandle ? t.currentCandle.vol : 0;
+                    
+                    // Si no hay volumen fuerte (>$80) o la liquidez es baja, el 99.9% de los bots ignoran el token.
+                    if (currentVol < 80 || realLiquidity < 40) {
+                        baseProb = 0.0001; 
+                        if (!t.dexScreener) return false; // Si no tiene Dex pagado, ni lo miran sin volumen fuerte.
+                    }
+
+                    // No compran si el token está "muerto" (menos de 5 trades registrados en su historia visible)
+                    const activity = (t.history || []).slice(-10).filter(c => c.vol > 0).length;
+                    if (activity < 5 && !isHighlyTrusted) return false; // Exigen constancia de transacciones.
+
+                    if (Math.random() > (baseProb * hypeMulti)) return false;
+
+                    if (bot.strategy === 'Scalper') return (t.solPool - vRes) > 2; 
+                    if (bot.strategy === 'Hodler') return ageMs > 60000 && (t.solPool - vRes) > 5;
                     return true;
                 });
 
                 if (attractiveTokens.length > 0) {
                     const targetToken = attractiveTokens[Math.floor(Math.random() * attractiveTokens.length)];
-                    handleTradeHost(targetToken.id, true, Math.min(bot.solBalance * 0.2, 10), bot.id, true);
-                    didTrade = true;
+                    const vRes = targetToken.virtualSol || VIRTUAL_USD_RESERVE;
+                    const cLim = targetToken.curveLimit || BONDING_CURVE_LIMIT;
+                    
+                    // --- NUEVA LÓGICA DE INVERSIÓN (10% a 50%) ---
+                    const isHighlyTrusted = targetToken.dexScreener || targetToken.exchange !== 'Pump.fun';
+                    
+                    // Base aleatoria entre 10% y 50%
+                    let investRatio = 0.10 + (Math.random() * 0.40); 
+                    
+                    // RESTRICCIÓN FÉRREA: Si no tiene Dex/CMC, NUNCA invierten más del 15%
+                    if (!isHighlyTrusted && investRatio > 0.15) {
+                        investRatio = 0.10 + (Math.random() * 0.05); // Lo capeamos entre 10% y 15%
+                    }
+
+                    if (bot.strategy === 'Whale') investRatio *= 0.5; // Ballenas arriesgan menos porcentaje
+                    if (bot.strategy === 'CopyTrader') investRatio = 0.3;
+
+                    // Smart Risk Control (Cap investments based on dynamic market depth)
+                    let maxSafeInvest = 5; // Default safe for pump.fun early curve
+                    if (targetToken.exchange === 'Binance') maxSafeInvest = 10000;
+                    else if (targetToken.exchange === 'KuCoin') maxSafeInvest = 5000;
+                    else if (targetToken.exchange === 'CoinMarketCap') maxSafeInvest = 2500;
+                    else if ((targetToken.solPool - vRes) > cLim) maxSafeInvest = 1000; // Raydium
+                    else maxSafeInvest = Math.max(5, (cLim - (targetToken.solPool - vRes)) * 0.5); // Up to 50% of remaining curve
+                    
+                    // Millionaires have strict max allocations to avoid breaking the AMM
+                    if (bot.solBalance >= 1000000) {
+                        investRatio = 0.05; // 5% max of their portfolio per trade
+                        maxSafeInvest = Math.max(maxSafeInvest, 50000); // Massive buying power
+                    } else if (bot.solBalance >= 10000) {
+                        investRatio = 0.10; // 10% max of their portfolio per trade
+                        maxSafeInvest = Math.max(maxSafeInvest, 15000); // 15k max buy
+                    }
+
+                    const rawInvestAmount = bot.solBalance * investRatio * (0.8 + Math.random() * 0.4); 
+                    const investAmount = Math.min(rawInvestAmount, maxSafeInvest);
+
+                    if (investAmount > 0.1) { handleTradeHost(targetToken.id, true, investAmount, bot.id, true); didTrade = true; }
                 }
             }
-            
-            // LÓGICA DE CREACIÓN DE TOKENS ELIMINADA PARA BOTS
+
+          // --- RED SOCIAL MODO DIFÍCIL (Vistas limitadas y estancamiento) ---
+            // Solo un 20% de probabilidad de que los bots siquiera miren DegenX
+// --- RED SOCIAL DEGENX (HARDCORE - LÍMITE 1 MILLÓN) ---
+            if (STATE.posts.length > 0 && Math.random() < 0.1) { // Probabilidad de interacción bajísima (10%)
+                const randomPost = STATE.posts[Math.floor(Math.random() * Math.min(10, STATE.posts.length))];
+                const postAuthor = STATE.players[randomPost.authorId];
+                
+                if (postAuthor && randomPost.authorId !== bot.id) {
+                    const viralMult = postAuthor.viralMultiplier || 1.0;
+                    
+                    // Crecimiento de vistas ridículamente lento
+                    const baseViews = Math.random() < 0.05 ? 1 : 0; 
+                    const followersFactor = Math.floor((postAuthor.followers || 0) * 0.0001); 
+                    
+                    const newViews = Math.floor(baseViews * viralMult) + followersFactor;
+                    
+                    // LÍMITE 1M: Se sumarán las vistas hasta llegar a un tope máximo de 1,000,000
+                    randomPost.views = Math.min(1000000, (randomPost.views || 0) + newViews);
+                    
+                    // Likes casi inexistentes (1 entre 1000 visitas en promedio)
+                    if (Math.random() < 0.001 * viralMult) {
+                        randomPost.likes = (randomPost.likes || 0) + 1;
+                        if (Math.random() < 0.01) { // Que te sigan es aún más raro (1% después de dar like)
+                            postAuthor.followers = (postAuthor.followers || 0) + 1;
+                        }
+                        didTrade = true;
+                    }
+                }
+            }
+
+            // --- BOTS POSTEAN EN DEGENX ---
+            if (bot.isVerified && Math.random() < 0.002) {
+                const msgs = ["Bullish en este mercado 🚀", "Acabo de inyectar liquidez. Estamos listos.", "Buscando la próxima gema 💎", "Paperhands out, real degens in.", "El FOMO es real hoy 🔥"];
+                handlePostHost(msgs[Math.floor(Math.random()*msgs.length)], bot.id);
+            }
+
+            const canLaunch = bot.solBalance > 5 && tokenKeys.length < 50;
+            // --- NUEVA LÓGICA DE CREACIÓN ---
+            // Forzamos a 'false' para que los bots no generen tokens propios nunca
+            const wantsToLaunch = false;
+            if (canLaunch && wantsToLaunch && bot.solBalance < 1000000) { // Millionaires don't launch shitcoins
+                const names = ["PepeBot", "Inu AI", "Safe", "Moon", "Cat", "Doge", "Gold", "Sigma", "Turbo"];
+                const tName = names[Math.floor(Math.random()*names.length)] + " " + Math.floor(Math.random()*99);
+                handleLaunchHost(tName, tName.substring(0,4).toUpperCase().replace(/\s/g, ''), '', bot.solBalance * 0.1, bot.id);
+                didTrade = true;
+            }
         });
+        
         if(didTrade || needsBroadcast) broadcastState();
     }, 1500); 
 }
 
 // CLIENT ACTIONS DISPATCHER
 function dispatchAction(type, payload) {
-    if(type==='ACTION_FETCH_CHART') {
-             // En modo local no hace falta pedir nada, el Host ya tiene los datos.
-        }
     if (STATE.roomConfig.isHost) {
         if(type==='ACTION_TRADE') { handleTradeHost(payload.tokenId, payload.isBuy, payload.amount, STATE.myProfile.id); broadcastState(); }
         if(type==='ACTION_CHAT') { handleChatHost(payload.msg, STATE.myProfile.id, false); }
@@ -1661,14 +1706,9 @@ function dispatchAction(type, payload) {
             if(p && p.tradesInfo && p.tradesInfo[payload.tokenId]) { p.tradesInfo[payload.tokenId][payload.type] = payload.value ? parseFloat(payload.value) : null; broadcastState(); }
         }
         if(type==='ACTION_TOGGLE_VOLBOT') {
-            const p = STATE.players[STATE.myProfile.id];
-            if(p) {
-                if(!p.volBots) p.volBots = {};
-                if(p.volBots[payload.tokenId] && p.volBots[payload.tokenId].active) p.volBots[payload.tokenId].active = false;
-                else p.volBots[payload.tokenId] = { active: true, amount: payload.amount, state: 'buy', originalAmount: payload.amount };
-                broadcastState();
-            }
-        }
+            // Enviar directamente al procesador del Host para que cree la "Billetera Sombra" correctamente
+            processMessageAsHost({ type: 'ACTION_TOGGLE_VOLBOT', payload: payload, senderId: STATE.myProfile.id });
+        }
 if(type==='ACTION_TOGGLE_LIVE') {
             if(STATE.tokens[payload.tokenId]) {
                 STATE.tokens[payload.tokenId].isLive = !STATE.tokens[payload.tokenId].isLive;
@@ -1748,18 +1788,7 @@ if(type==='ACTION_TOGGLE_LIVE') {
 
 // RENDERING UI ENGINE
 function switchTab(tabId) { STATE.activeTab = tabId; STATE.selectedTokenId = null; STATE._renderedTabId = null; updateUI(); }
-function selectToken(id) { 
-    STATE.selectedTokenId = id; 
-    STATE.tradeAmount = ''; 
-    STATE._renderedTabId = null; 
-    STATE.chartConfig = { zoom: 100, offset: 0 }; 
-    
-    // SOLICITAR GRÁFICA AL HOST: 
-    // Solo pedimos los datos de esta moneda específica para ahorrar red.
-    dispatchAction('ACTION_FETCH_CHART', { tokenId: id }); 
-    
-    updateUI(); 
-}
+function selectToken(id) { STATE.selectedTokenId = id; STATE.tradeAmount = ''; STATE._renderedTabId = null; STATE.chartConfig = { zoom: 100, offset: 0 }; dispatchAction('ACTION_GET_FULL_CHART', { tokenId: id }); updateUI(); }
 function setTradeType(type) { STATE.tradeType = type; STATE.tradeAmount = ''; STATE._renderedTabId = null; updateUI(); }
 
 function addToast(msg, icon) {
@@ -2190,7 +2219,11 @@ function UpdateSocialDynamic() {
                         ${isBot && !p.authorId.startsWith('SYSTEM_') ? `<span class="bg-purple-500/20 text-purple-400 border border-purple-500/30 text-[8px] px-1.5 py-0.5 rounded uppercase font-bold tracking-widest">Bot</span>` : ''}
                         <span class="text-slate-500 text-[10px] font-mono">• ${followers} seguidores</span>
                     </div>
-                    <div class="text-slate-300 text-xs md:text-sm leading-relaxed whitespace-pre-wrap break-words">${formattedText}</div>
+                   <div class="text-slate-300 text-xs md:text-sm leading-relaxed whitespace-pre-wrap break-words">${formattedText}</div>
+                    <div class="flex items-center gap-4 mt-3 pt-3 border-t border-slate-800/50 text-[10px] md:text-xs font-bold text-slate-500">
+                        <span class="flex items-center gap-1 hover:text-blue-400 cursor-pointer transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg> ${p.views || 0} Vistas</span>
+                        <span class="flex items-center gap-1 hover:text-pink-500 cursor-pointer transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> ${p.likes || 0} Likes</span>
+                    </div>
                 </div>
             </div>
         </div>`;
@@ -2531,7 +2564,7 @@ function RenderTokenDetailSkeleton() {
     return `
     <div class="flex flex-col h-full w-full overflow-hidden bg-[#020617]" id="token-detail-container">
         
-      <header class="flex-none p-4 md:px-6 py-3 border-b border-slate-800 bg-slate-900/50 flex items-center gap-4 z-10 shadow-lg">
+       <header class="flex-none p-4 md:px-6 py-3 border-b border-slate-800 bg-slate-900/50 flex items-center gap-4 z-10 shadow-lg">
             <button onclick="switchTab('market');" class="text-slate-400 hover:text-white flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-800 transition-colors shrink-0" title="Volver al Mercado">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
             </button>
@@ -2543,49 +2576,40 @@ function RenderTokenDetailSkeleton() {
                 <div id="dex-badge" class="hidden absolute -top-2 -left-2 bg-slate-900 text-white text-[8px] font-black px-1.5 py-0.5 rounded shadow-lg border border-slate-700 flex items-center gap-1 z-20">🦅 DEX</div>
             </div>
             
-            <div class="flex-1 min-w-0 flex flex-col justify-center">
+            <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-0.5">
                     <h1 class="text-xl md:text-2xl font-black text-white truncate terminal-text">${token.name}</h1>
                     <span class="text-sm md:text-base font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-lg border border-emerald-500/20">$${token.ticker}</span>
-                    
-                    ${token.socialLink ? `
-                    <div class="relative group ml-2 z-50">
-                        <button class="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 hover:bg-blue-500/30 transition-colors">🌐 Redes</button>
-                        <div class="absolute top-full left-0 mt-2 hidden group-hover:block bg-[#020617] p-2 rounded-xl border border-slate-700 w-64 md:w-80 shadow-[0_0_30px_rgba(0,0,0,0.8)]">
-                            ${token.socialLink.includes('youtu') ? `<iframe class="w-full aspect-video rounded-lg border border-slate-800" src="${token.socialLink.replace('watch?v=', 'embed/').replace('youtu.be/', 'youtube.com/embed/')}" frameborder="0" allowfullscreen></iframe>` : `<a href="${token.socialLink}" target="_blank" class="text-blue-400 hover:text-blue-300 font-bold block text-center py-4 bg-slate-900 rounded-lg">Abrir Enlace de X ↗</a>`}
-                        </div>
-                    </div>` : ''}
                 </div>
                 
                 <div class="flex items-center gap-3 text-slate-400 text-[10px] md:text-xs font-medium">
                     <div class="flex items-center gap-1.5 shrink-0">
                         <span class="text-slate-600">Dev:</span>
                         <span class="font-mono text-white bg-slate-800 px-2 py-0.5 rounded">${firstCreatorId.substring(0,6)}...</span>
-                        <span class="text-white">${creatorName}</span>
-                        <span class="flex items-center gap-0.5 text-yellow-400 ml-1" title="Reputación del Dev"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> ${STATE.players[firstCreatorId]?.reputation || 1}</span>
+                        <span class="text-white">${creatorName} ${isMultiSig ? `<span class="text-orange-400">[MultiSig ${creatorsCount}]</span>` : ''}</span>
                     </div>
                 </div>
             </div>
 
             <div class="flex items-center gap-2 md:gap-3 shrink-0 bg-slate-950 border border-slate-800 p-3 rounded-2xl shadow-inner font-mono text-center">
                 <div>
-                    <div class="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Liquidez</div>
-                    <div id="hdr-liq" class="text-sm md:text-lg text-blue-400 font-black">...</div>
-                </div>
-                <div class="h-6 w-px bg-slate-800"></div>
-                <div>
-                    <div class="text-[9px] text-slate-500 uppercase tracking-widest font-bold">MCap</div>
-                    <div id="hdr-mcap" class="text-sm md:text-lg text-emerald-400 font-black">...</div>
-                </div>
-                <div class="h-6 w-px bg-slate-800"></div>
-                <div>
                     <div class="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Precio</div>
-                    <div id="hdr-price" class="text-sm md:text-lg text-white font-black">...</div>
+                    <div id="hdr-price" class="text-sm md:text-xl text-white font-black">...</div>
                 </div>
                 <div class="h-6 w-px bg-slate-800"></div>
                 <div>
                     <div class="text-[9px] text-slate-500 uppercase tracking-widest font-bold">ATH</div>
-                    <div id="hdr-ath" class="text-sm md:text-lg text-yellow-400 font-black">...</div>
+                    <div id="hdr-ath" class="text-sm md:text-xl text-yellow-400 font-black">...</div>
+                </div>
+                <div class="h-6 w-px bg-slate-800"></div>
+                <div>
+                    <div class="text-[9px] text-slate-500 uppercase tracking-widest font-bold">MCap</div>
+                    <div id="hdr-mcap" class="text-sm md:text-xl text-emerald-400 font-black">...</div>
+                </div>
+                <div class="h-6 w-px bg-slate-800"></div>
+                <div>
+                    <div class="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Liq</div>
+                    <div id="hdr-liq" class="text-sm md:text-xl text-cyan-400 font-black">...</div>
                 </div>
             </div>
         </header>
@@ -2705,17 +2729,17 @@ function UpdateTokenDetailDynamic() {
     if (hdrPrice) hdrPrice.innerText = '$' + currentPrice.toFixed(8);
     if (hdrAth) hdrAth.innerText = formatUSD(athMcap);
     if (hdrMcap) hdrMcap.innerText = formatUSD(mcap);
-    
     if (dexBadge) {
         if (token.dexScreener) dexBadge.classList.remove('hidden');
         else dexBadge.classList.add('hidden');
     }
     // ----------------------------------------
     
-    if (hdrPrice) hdrPrice.innerText = '$' + currentPrice.toFixed(8);
+ if (hdrPrice) hdrPrice.innerText = '$' + currentPrice.toFixed(8);
     if (hdrMcap) hdrMcap.innerText = formatUSD(mcap);
+    
     const hdrLiq = document.getElementById('hdr-liq');
-    if (hdrLiq) hdrLiq.innerText = formatUSD(token.solPool - (token.virtualSol || VIRTUAL_USD_RESERVE));
+    if (hdrLiq) hdrLiq.innerText = formatUSD(token.solPool - (token.virtualSol || 20));
     // ----------------------------------------
     
     const balBase = document.getElementById('tok-bal-base');
@@ -2815,10 +2839,6 @@ function UpdateTokenDetailDynamic() {
                 <button onclick="dispatchAction('ACTION_TOGGLE_LIVE', { tokenId: '${token.id}' });" class="w-full mb-2 ${token.isLive ? 'bg-red-500/20 text-red-400 border-red-500/30 animate-pulse' : 'bg-slate-800 text-white border-slate-700 hover:bg-slate-700'} border rounded-lg py-2 text-[9px] font-black transition-all uppercase tracking-wider flex items-center justify-center gap-2">
                     ${token.isLive ? '🔴 EN VIVO (FOMO ACTIVO)' : '🎥 Iniciar Live'}
                 </button>
-                ${!token.socialLink ? `
-                <button onclick="const lnk = prompt('Pega el enlace de X o YouTube:'); if(lnk){ dispatchAction('ACTION_SET_SOCIAL', { tokenId: '${token.id}', link: lnk }); }" class="w-full mb-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-wider flex items-center justify-center gap-2">
-                    🔗 Vincular X / YouTube
-                </button>` : ''}
                 ${!token.dexScreener ? `
                 <button onclick="if(window.confirm('¿Pagar $350 para actualizar DexScreener? Da máxima seguridad a los inversores y dispara el FOMO.')) dispatchAction('ACTION_DEXSCREENER', { tokenId: '${token.id}' });" class="w-full mb-2 bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/30 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-wider">
                     🦅 Pagar DexScreener ($350)
@@ -3081,8 +3101,8 @@ function RenderShop() {
                 <h3 class="font-black text-white text-xs md:text-lg mb-1 truncate">${item.name}</h3>
                 <div class="text-[10px] md:text-sm font-mono font-bold text-emerald-400 mb-3 md:mb-4 bg-emerald-500/10 w-fit mx-auto px-2 py-0.5 md:py-1 rounded-lg border border-emerald-500/20">${formatUSD(item.price)}</div>
                 <div class="text-[8px] md:text-xs font-bold text-slate-400 mb-4 md:mb-6 flex flex-col items-center gap-1 bg-slate-950 py-1 md:py-1.5 rounded-lg shadow-inner">
-                    <span class="flex items-center gap-1"><span class="text-slate-600">${Icons.Shield}</span> +${item.rep} Rep</span>
-                    <span class="flex items-center gap-1 text-blue-400"><span class="text-slate-600">${Icons.Users}</span> +${item.rep*10} Fans</span>
+                   <span class="flex items-center gap-1"><span class="text-slate-600">${Icons.Shield}</span> +${item.rep} Rep</span>
+                    <span class="flex items-center gap-1 text-blue-400"><span class="text-slate-600">${Icons.Flame}</span> +${(item.rep*5)}% Viralidad</span>
                 </div>
                 <button onclick="dispatchAction('ACTION_BUY_LUXURY', {itemId: '${item.id}'}); switchTab('shop');" ${isOwned ? 'disabled' : ''} class="mt-auto w-full py-2.5 md:py-3.5 rounded-xl font-black text-[10px] md:text-sm uppercase tracking-wider transition-all ${(me.solBalance < item.price) || isOwned ? 'opacity-50 cursor-not-allowed bg-slate-950 text-slate-600 border border-slate-800' : 'bg-white text-slate-950 hover:bg-slate-200 hover:shadow-lg'}">${isOwned ? 'Obtenido' : 'Comprar'}</button>
             </div>`;
@@ -3145,8 +3165,20 @@ function RenderLaunch() {
             </div>
             <div class="bg-slate-950 p-4 md:p-5 rounded-xl border border-slate-800 text-[10px] md:text-sm space-y-1.5 md:space-y-2 mt-3 md:mt-4 shadow-inner">
                 <div class="flex justify-between font-bold text-slate-400 uppercase tracking-wider"><span>Costo Base (Fijo):</span><span class="font-mono text-white">$1.00</span></div>
-                <div class="flex justify-between font-black text-emerald-400 pt-2.5 md:pt-3 border-t border-slate-800/50 mt-2.5 md:mt-3 uppercase tracking-wider"><span>Total Mínimo a Repartir:</span><span class="font-mono">$1.00</span></div>
+               <div class="flex justify-between font-black text-emerald-400 pt-2.5 md:pt-3 border-t border-slate-800/50 mt-2.5 md:mt-3 uppercase tracking-wider"><span>Total Mínimo a Repartir:</span><span class="font-mono">$1.00</span></div>
             </div>
+            
+            <div class="bg-blue-900/20 p-3 md:p-4 rounded-xl border border-blue-500/30 mt-3 md:mt-4 flex items-center justify-between shadow-inner">
+                <div class="flex items-center gap-3">
+                    <span class="text-2xl">${Icons.Megaphone}</span>
+                    <div>
+                        <div class="text-[10px] font-black text-blue-400 uppercase tracking-widest">Cuenta DegenX Vinculada</div>
+                        <div class="text-xs text-white font-bold">@${me.name} <span class="text-slate-400 font-mono text-[10px]">(${(me.followers || 0).toLocaleString()} Fans)</span></div>
+                    </div>
+                </div>
+                <div class="text-[9px] text-blue-300 text-right font-bold w-1/3 leading-tight opacity-70">Tus fans generan FOMO en el mercado al crear.</div>
+            </div>
+
             <div class="flex flex-col sm:flex-row gap-2 md:gap-3 pt-3 md:pt-4">
                 <button type="submit" class="w-full sm:flex-1 bg-emerald-500 text-slate-950 font-black py-3 md:py-4 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:bg-emerald-400 transition-all text-sm md:text-base tracking-widest uppercase order-1 sm:order-2">Lanzar Co-Firma</button>
                 <button type="button" onclick="switchTab('market');" class="w-full sm:w-auto px-6 bg-slate-800 text-white font-bold py-3 md:py-0 rounded-xl hover:bg-slate-700 transition-colors uppercase tracking-widest text-[10px] md:text-xs order-2 sm:order-1">Cancelar</button>
@@ -3306,9 +3338,8 @@ function generateChartSVG(token, w, h, simplified) {
 
     let viewData = [];
     if (simplified) {
-        viewData = data.slice(-100); // Gráficas pequeñas del mercado
+        viewData = data.slice(-100); 
     } else {
-        // Gráfica grande interactiva
         let zoom = STATE.chartConfig?.zoom || 100;
         let offset = STATE.chartConfig?.offset || 0;
         const startIdx = Math.max(0, data.length - zoom - offset);
@@ -3318,60 +3349,69 @@ function generateChartSVG(token, w, h, simplified) {
 
     if(viewData.length === 0) return '';
 
+    // --- CÁLCULO DE DIMENSIONES CON EJE Y (NUEVO) ---
+    const rightPadding = simplified ? 0 : 55; // Espacio para los labels de MC
     const pad = simplified ? 0 : 20;
-    const yAxisWidth = simplified ? 0 : 65; // Espacio para el MCap
-    const iW = w - pad * 2 - yAxisWidth, iH = h - pad * 2;
+    const iW = w - pad * 2 - rightPadding, iH = h - pad * 2;
     const minP = Math.min(...viewData.map(d=>d.low)), maxP = Math.max(...viewData.map(d=>d.high));
     const range = maxP - minP || 1;
     const yPad = range * 0.1;
     const dMin = minP - yPad, dMax = maxP + yPad, dRange = dMax - dMin;
     const getY = (val) => pad + iH - ((val - dMin) / dRange) * iH;
-    const space = iW / Math.max(viewData.length, 10);
-    const cW = Math.max(2, space * 0.8);
+    const space = iW / Math.max(viewData.length, 25);
+    const cW = Math.max(2, space * 0.7);
 
     let svg = `<svg width="100%" height="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">`;
     
-    // Dibujar cuadrícula y Eje Y (MCap)
+    // --- FONDO, REJILLA Y EJE Y ---
     if (!simplified) {
-        for(let i=0; i<=5; i++) {
-            const y = pad + iH * (i/5);
-            const valP = dMax - (dRange * (i/5));
-            const valMcap = valP * (token.initialSupply || 1000000000);
-            const textMcap = valMcap >= 1000000 ? (valMcap/1000000).toFixed(1)+'M' : (valMcap>=1000 ? (valMcap/1000).toFixed(1)+'K' : valMcap.toFixed(0));
+        for(let i=0; i<=4; i++) {
+            const val = dMin + (dRange * (i/4));
+            const y = getY(val);
+            const mcapVal = val * (token.initialSupply || 1000000000);
             
-            svg += `<line x1="0" y1="${y}" x2="${w - yAxisWidth}" y2="${y}" stroke="#1e293b" stroke-dasharray="4 4" stroke-width="1" />`;
-            svg += `<text x="${w - yAxisWidth + 5}" y="${y + 4}" fill="#64748b" font-size="11" font-family="monospace">${textMcap}</text>`;
+            // Formatear el label de la escala (Ej: 20K, 1.5M)
+            let label = mcapVal >= 1000000 ? (mcapVal/1000000).toFixed(1) + 'M' : mcapVal >= 1000 ? (mcapVal/1000).toFixed(1) + 'K' : mcapVal.toFixed(0);
+
+            // Líneas horizontales de fondo
+            svg += `<line x1="0" y1="${y}" x2="${w - rightPadding}" y2="${y}" stroke="#1e293b" stroke-dasharray="4 4" stroke-width="1" />`;
+            // Textos del Eje Y
+            svg += `<text x="${w - rightPadding + 5}" y="${y + 4}" fill="#64748b" font-family="monospace" font-size="10">${label}</text>`;
         }
     }
 
+    // --- DIBUJAR VELAS ---
     viewData.forEach((c, i) => {
         const isUp = c.close >= c.open;
         const color = isUp ? '#10b981' : '#ef4444';
         const x = pad + (i * space) + (space / 2);
         const bY = Math.min(getY(c.open), getY(c.close));
-        const bH = Math.max(Math.abs(getY(c.open) - getY(c.close)), 1);
-        svg += `<line x1="${x}" y1="${getY(c.high)}" x2="${x}" y2="${getY(c.low)}" stroke="${color}" stroke-width="1.5" opacity="0.7"/>`;
-        svg += `<rect x="${x - cW/2}" y="${bY}" width="${cW}" height="${bH}" fill="${color}" rx="0.5" />`;
+        const bH = Math.max(Math.abs(getY(c.open) - getY(c.close)), 1.5);
+        svg += `<line x1="${x}" y1="${getY(c.high)}" x2="${x}" y2="${getY(c.low)}" stroke="${color}" stroke-width="${simplified?1:2}" opacity="0.6"/>`;
+        svg += `<rect x="${x - cW/2}" y="${bY}" width="${cW}" height="${bH}" fill="${color}" rx="1" />`;
     });
 
-    // Dibujar línea de precio actual y etiqueta MCap
+    // --- LÍNEA DE PRECIO ACTUAL ESTILO TRADINGVIEW (NUEVO) ---
     if (!simplified && viewData.length > 0) {
-        const currentClose = viewData[viewData.length-1].close;
-        const currY = getY(currentClose);
-        const currentMcap = currentClose * (token.initialSupply || 1000000000);
-        const textMcap = currentMcap >= 1000000 ? (currentMcap/1000000).toFixed(2)+'M' : (currentMcap>=1000 ? (currentMcap/1000).toFixed(2)+'K' : currentMcap.toFixed(0));
-        
-        const isUp = currentClose >= viewData[viewData.length-1].open;
-        const color = isUp ? '#10b981' : '#ef4444';
+        const currentPrice = viewData[viewData.length - 1].close;
+        const currentY = getY(currentPrice);
+        const currentMcap = currentPrice * (token.initialSupply || 1000000000);
+        let mcapLabel = currentMcap >= 1000000 ? (currentMcap/1000000).toFixed(2) + 'M' : currentMcap >= 1000 ? (currentMcap/1000).toFixed(1) + 'K' : currentMcap.toFixed(0);
 
-        svg += `<line x1="0" y1="${currY}" x2="${w - yAxisWidth}" y2="${currY}" stroke="${color}" stroke-dasharray="2 2" stroke-width="1" opacity="0.8"/>`;
-        svg += `<rect x="${w - yAxisWidth}" y="${currY - 9}" width="${yAxisWidth}" height="18" fill="${color}" rx="2"/>`;
-        svg += `<text x="${w - yAxisWidth + 4}" y="${currY + 4}" fill="#020617" font-size="11" font-weight="bold" font-family="monospace">${textMcap}</text>`;
+        // Línea punteada que cruza la pantalla
+        svg += `<line x1="0" y1="${currentY}" x2="${w - rightPadding}" y2="${currentY}" stroke="#94a3b8" stroke-dasharray="2 2" stroke-width="1" opacity="0.8" />`;
+        
+        // Caja resaltada en el eje Y
+        svg += `<rect x="${w - rightPadding}" y="${currentY - 10}" width="${rightPadding}" height="20" fill="#1e293b" stroke="#475569" stroke-width="1" />`;
+        
+        // Texto exacto dentro de la caja
+        svg += `<text x="${w - rightPadding + 5}" y="${currentY + 4}" fill="#f8fafc" font-family="monospace" font-weight="bold" font-size="10">${mcapLabel}</text>`;
     }
 
     svg += `</svg>`;
     return svg;
 }
+
 // INIT (Analizar parámetros y empezar)
 window.onload = () => {
     const navEntries = performance.getEntriesByType("navigation");
