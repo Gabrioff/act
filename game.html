@@ -646,7 +646,7 @@ function startSystemEvents() {
                 else if (p.solBalance < 5) { p.solBalance = 15; changed = true; }
 
                 // --- LÓGICA DE TRADING INTELIGENTE ---
-                if (Math.random() < 0.05) { 
+                if (Math.random() < 0.01) { 
                     const tokenIds = Object.keys(STATE.tokens).filter(id => STATE.tokens[id].tokenPool > 0);
                     if (tokenIds.length > 0) {
                         const randomTokenId = tokenIds[Math.floor(Math.random() * tokenIds.length)];
@@ -661,7 +661,7 @@ function startSystemEvents() {
                             if (pnlPct > 20 || pnlPct < -15) {
                                 handleTradeHost(randomTokenId, false, bal, p.id, true);
                                 changed = true;
-                            } else if (Math.random() < 0.1) {
+                            } else if (Math.random() < 0.05) {
                                 // A veces venden por aburrimiento o pánico moderado
                                 handleTradeHost(randomTokenId, false, bal * (0.5 + Math.random() * 0.5), p.id, true);
                                 changed = true;
@@ -669,7 +669,7 @@ function startSystemEvents() {
                         } else if (p.solBalance > 10) {
                             // Entran pensando: 1% a 10% del balance. Control de riesgo.
                             const conviction = Math.random();
-                            if (conviction > 0.4) {
+                            if (conviction > 0.9) {
                                 const buyAmt = p.solBalance * (0.01 + Math.random() * 0.09); 
                                 if (buyAmt > 1) { 
                                     handleTradeHost(randomTokenId, true, buyAmt, p.id, true); 
@@ -1026,11 +1026,13 @@ function getCompressedState() {
     const humans = {};
     const bots = [];
     
-    Object.values(STATE.players).sort(() => 0.5 - Math.random()).slice(0, 300).forEach(p => {
+    // HUMANOS: Los humanos SIEMPRE se mandan todos. NO podemos cortarlos aleatoriamente o el cliente perderá su propio usuario.
+    Object.values(STATE.players).forEach(p => {
         if (!p.isBot || p.id.startsWith('SYSTEM_')) humans[p.id] = p;
         else bots.push(p);
     });
 
+    // BOTS: Los ordenamos por saldo y mandamos solo a los 70 más ricos (los pobres no se sincronizan salvo que tengan tokens)
     bots.sort((a,b) => (b.solBalance + (b.solStaked||0)) - (a.solBalance + (a.solStaked||0)));
     const topBots = bots.slice(0, 70); 
     
@@ -2821,7 +2823,7 @@ function UpdateTokenDetailDynamic() {
     // ----------------------------------------
     
     const balBase = document.getElementById('tok-bal-base');
-    const balTokens = me.portfolio[token.id] || 0;
+    const balTokens = me?.portfolio ? (me.portfolio[token.id] || 0) : 0;
     const isCex = token.exchange !== 'Pump.fun' && token.exchange !== 'Raydium';
     const vRes = token.virtualSol || VIRTUAL_USD_RESERVE;
     const cLim = token.curveLimit || BONDING_CURVE_LIMIT;
