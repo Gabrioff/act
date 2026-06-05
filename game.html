@@ -890,7 +890,6 @@ if (type === 'ACTION_TOGGLE_LIVE') {
                 p.solBalance += (payload.amount * 2);
                 handleChatHost(`🎰 ¡${p.name} ganó ${formatUSD(payload.amount)} en el Casino! x2`, senderId, true);
             } else { handleChatHost(`🎰 ${p.name} fue liquidado y perdió ${formatUSD(payload.amount)} en el Casino. F`, senderId, true); }
-            } else { handleChatHost(`🎰 ${p.name} fue liquidado y perdió ${formatUSD(payload.amount)} en el Casino. F`, senderId, true); }
             broadcastState();
         }
     }
@@ -908,6 +907,7 @@ if (type === 'ACTION_TOGGLE_LIVE') {
             broadcastState();
         }
     }
+}
 
 
 function processMessageAsClient(data) {
