@@ -479,7 +479,7 @@ function initNetwork(roomId, mode, customBotCount = 50) {
                     }
                 }, 3000);
 
-            } else {
+
             } else {
                 mqttClient.subscribe(`dgn/${roomId}/out`);
                 const joinPacket = { type: 'JOIN_REQ', payload: { ...STATE.myProfile }, senderId: STATE.myProfile.id };
@@ -548,7 +548,6 @@ function initNetwork(roomId, mode, customBotCount = 50) {
                     if (window.localAudioStream) call.answer(window.localAudioStream); else call.answer(); 
                     call.on('stream', remoteStream => playAudioStream(remoteStream, call.peer));
                 });
-            } else {
             } else {
                 peer = new Peer(WEBRTC_CONFIG);
                 peer.on('open', (id) => { STATE.myProfile.peerId = id; });
@@ -652,7 +651,6 @@ function startSystemEvents() {
                                 handleTradeHost(tid, true, buyAmt, shadow.id, true);
                                 changed = true;
                             } else {
-                            } else {
                                 vb.state = 'sell'; // No tiene USD, hora de vender los tokens ganados
                             }
                         } else if (vb.state === 'sell') {
@@ -724,7 +722,6 @@ function processMessageAsHost(data) {
             STATE.players[payload.id].name = payload.name;
             STATE.players[payload.id].avatar = payload.avatar;
         } else {
-        } else {
             if (Object.keys(STATE.players).length >= STATE.roomConfig.maxPlayers) {
                 mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify({ type: 'JOIN_REJECT', target: payload.id, reason: 'Sala llena' }));
                 return;
@@ -775,7 +772,6 @@ function processMessageAsHost(data) {
             if(main.solBalance >= payload.amount) { main.solBalance -= payload.amount; sub.solBalance += payload.amount; }
             else { hostEmitAlert(senderId, "Saldo insuficiente en Main Wallet", "❌"); }
         } else {
-        } else {
             if(sub.solBalance >= payload.amount) { sub.solBalance -= payload.amount; main.solBalance += payload.amount; }
             else { hostEmitAlert(senderId, "Saldo insuficiente en Sub-Wallet", "❌"); }
         }
@@ -815,7 +811,6 @@ function processMessageAsHost(data) {
                 p.volBots[tid].active = false;
                 hostEmitAlert(p.id, `Bot detenido. Fondos y ganancias devueltos a tu cuenta principal.`, "🤖");
             } else {
-            } else {
                 // INICIAR
                 const amt = parseFloat(payload.amount);
                 if (amt > 0 && p.solBalance >= amt) {
@@ -829,7 +824,6 @@ function processMessageAsHost(data) {
                     STATE.players[shadowId].solBalance += amt; // Se lo da a la billetera sombra
                     p.volBots[tid] = { active: true, shadowId: shadowId, state: 'buy' };
                     hostEmitAlert(p.id, `Bot iniciado con ${formatUSD(amt)}.`, "🤖");
-                } else {
                 } else {
                     hostEmitAlert(p.id, `Saldo insuficiente para asignar al bot.`, "❌");
                 }
@@ -883,7 +877,7 @@ if (type === 'ACTION_TOGGLE_LIVE') {
                 const split = payload.amount / humans.length;
                 humans.forEach(h => { h.solBalance += split; });
                 handleChatHost(`🚁 AIRDROP: ${p.name} repartió ${formatUSD(payload.amount)} a ${humans.length} degens!`, senderId, true);
-            } else { handleChatHost(`🚁 ${p.name} intentó un Airdrop, pero no hay humanos. Se quemaron.`, senderId, true); }
+
             } else { handleChatHost(`🚁 ${p.name} intentó un Airdrop, pero no hay humanos. Se quemaron.`, senderId, true); }
             broadcastState();
         }
@@ -914,7 +908,7 @@ if (type === 'ACTION_TOGGLE_LIVE') {
             broadcastState();
         }
     }
-}
+
 
 function processMessageAsClient(data) {
     const { type, payload, senderId, time, target } = data;
@@ -1017,18 +1011,32 @@ const compressedTokens = {};
     };
 }
 
-let lastMqttBroadcast = 0;
-let mqttBroadcastTimer = null;
-
 function broadcastState() {
     if (STATE.roomConfig.isHost) {
-        processMessageAsHost({ type, payload, senderId: STATE.myProfile.id, time: Date.now() });
+        requestUIRender();
+        if (STATE.roomConfig.isOffline) return;
+        
+        const now = Date.now();
+        const timeSinceLast = now - (window.lastMqttBroadcast || 0);
+        const statePayload = getCompressedState();
+        
+        // P2P Direct
+        Object.values(window.clientConns || {}).forEach(conn => {
+            if (conn && conn.open) conn.send({ type: 'STATE_SYNC', time: now, payload: statePayload });
+        });
+
+        // MQTT Broadcast
+        if (mqttClient && mqttClient.connected) {
+            if (timeSinceLast >= 500) {
+                window.lastMqttBroadcast = now;
+                const msg = { type: 'STATE_SYNC', time: now, payload: statePayload };
+                mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify(msg));
             } else {
                 // Si se limitó por velocidad, programa un envío garantizado
-                if (mqttBroadcastTimer) clearTimeout(mqttBroadcastTimer);
-                mqttBroadcastTimer = setTimeout(() => {
-                    lastMqttBroadcast = Date.now();
-                    const msg = { type: 'STATE_SYNC', time: lastMqttBroadcast, payload: getCompressedState() };
+                if (window.mqttBroadcastTimer) clearTimeout(window.mqttBroadcastTimer);
+                window.mqttBroadcastTimer = setTimeout(() => {
+                    window.lastMqttBroadcast = Date.now();
+                    const msg = { type: 'STATE_SYNC', time: window.lastMqttBroadcast, payload: statePayload };
                     mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify(msg));
                 }, 600 - timeSinceLast);
             }
@@ -1148,7 +1156,6 @@ if (!currentCandle || Date.now() - currentCandle.time > 1000) {
             });
         }
 
-    } else {
     } else {
         // FOMO: Bloqueo de ventas (Tokens Congelados)
         if (token.isFrozen && !(token.creatorIds || [token.creatorId]).includes(player.id)) {
@@ -1343,7 +1350,6 @@ function handleGiftHost(targetId, asset, amount, senderId) {
         if (sender.solBalance < amount) return;
         sender.solBalance -= amount; target.solBalance += amount;
     } else {
-    } else {
         if (!sender.portfolio[asset] || sender.portfolio[asset] < amount) return;
         sender.portfolio[asset] -= amount; target.portfolio[asset] = (target.portfolio[asset] || 0) + amount;
     }
@@ -1363,7 +1369,6 @@ function handleBuyLuxuryHost(itemId, playerId) {
     player.solBalance -= item.price; 
     if(item.isVerified) {
         player.isVerified = true;
-    } else {
     } else {
         player.luxuries = [...(player.luxuries || []), item.icon];
     }
@@ -1435,7 +1440,6 @@ function handleClaimAllFeesHost(playerId) {
     if(totalClaimedForMe > 0) {
         hostEmitAlert(playerId, `Has reclamado tu parte de ${formatUSD(totalClaimedForMe)} en Fees.`, "💰");
         broadcastState();
-    } else {
     } else {
         hostEmitAlert(playerId, `No tienes fees para reclamar actualmente.`, "❌");
     }
@@ -2521,7 +2525,6 @@ function UpdateRacingDynamic() {
         } else if (r.state === 'racing') {
             statusHtml = `<span class="text-red-500 font-black uppercase tracking-widest animate-pulse flex items-center gap-2">🚗💨 Corriendo...</span>`;
         } else {
-        } else {
             const winner = STATE.players[r.winner];
             statusHtml = `<span class="text-emerald-400 font-black text-sm border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 rounded-lg">🏆 Ganó ${winner?.name || 'Alguien'}</span>`;
         }
@@ -2542,7 +2545,6 @@ function UpdateRacingDynamic() {
                 `).join('')}
             </div>
             `;
-        } else {
         } else {
             visualTrackHtml = `
             <div class="flex items-center gap-2 overflow-x-auto hide-scrollbar pt-2 mt-2 border-t border-slate-800/50">
@@ -2808,7 +2810,6 @@ function UpdateTokenDetailDynamic() {
                                 </span>`;
             pnlDiv.classList.remove('hidden');
         } else {
-        } else {
             pnlDiv.classList.add('hidden');
         }
     }
@@ -2922,7 +2923,6 @@ function UpdateTokenDetailDynamic() {
             walletsHTML += `</div><button onclick="dispatchAction('ACTION_CREATE_WALLET', {}); window.lastWalletCount = 0;" class="w-full bg-slate-800 hover:bg-slate-700 text-[9px] font-bold py-1.5 rounded-b-lg text-slate-300 border border-t-0 border-slate-700 transition-colors">+ Nueva Sub-Wallet</button>`;
             multiWalletUI.innerHTML = walletsHTML;
         } else {
-        } else {
             myWallets.forEach((w) => {
                 const solSpan = document.getElementById('w-sol-' + w.id);
                 const tokSpan = document.getElementById('w-tok-' + w.id);
@@ -2954,7 +2954,6 @@ function UpdateTokenDetailDynamic() {
                             <button onclick="const a=parseFloat(document.getElementById('freeze-amt-${token.id}').value); const t=parseFloat(document.getElementById('freeze-time-${token.id}').value); if(a>0 && t>0) { dispatchAction('ACTION_FREEZE_TOKENS', { tokenId: '${token.id}', amount: a, minutes: t }); document.getElementById('freeze-amt-${token.id}').value=''; document.getElementById('freeze-time-${token.id}').value=''; }" class="w-full bg-cyan-900/40 text-cyan-400 hover:bg-cyan-800/60 border border-cyan-700/50 rounded py-2 text-[9px] font-bold transition-colors uppercase tracking-widest">Bloquear Tokens</button>
                         </div>
                     `;
-                } else {
                 } else {
                     const txt = document.getElementById(`frozen-amt-text-${token.id}`);
                     if (txt) txt.innerText = frozenAmt > 0 ? formatToken(frozenAmt) + ' bloq.' : '';
@@ -3000,7 +2999,6 @@ function UpdateTokenDetailDynamic() {
                 if (volBot && volBot.active) amtInput.classList.add('hidden'); // Oculta el input si está trabajando
                 else amtInput.classList.remove('hidden');
             }
-        } else {
         } else {
             fixedCreatorTools.classList.add('hidden');
         }
@@ -3416,7 +3414,6 @@ function generateChartSVG(token, w, h, simplified) {
                 if (currentAgg) data.push(currentAgg);
                 currentAgg = { ...candle, time: aggTime };
             } else {
-            } else {
                 currentAgg.high = Math.max(currentAgg.high, candle.high);
                 currentAgg.low = Math.min(currentAgg.low, candle.low);
                 currentAgg.close = candle.close;
@@ -3425,14 +3422,12 @@ function generateChartSVG(token, w, h, simplified) {
         });
         if (currentAgg) data.push(currentAgg);
     } else {
-    } else {
         data = baseData;
     }
 
     let viewData = [];
     if (simplified) {
         viewData = data.slice(-100); 
-    } else {
     } else {
         let zoom = STATE.chartConfig?.zoom || 100;
         let offset = STATE.chartConfig?.offset || 0;
@@ -3542,7 +3537,6 @@ window.onload = () => {
     } else if(isHost) {
         STATE.roomConfig = {...STATE.roomConfig, code: code, isHost: true, isOffline: false };
         initNetwork(code, 'host', STATE.roomConfig.botCount);
-    } else {
     } else {
         STATE.roomConfig = {...STATE.roomConfig, code: code, isHost: false, isOffline: false};
         initNetwork(code, 'client');
@@ -3678,7 +3672,6 @@ function setupResizableSplitter() {
         if (e.type === 'touchmove') {
             clientX = e.touches[0].clientX;
         } else {
-        } else {
             clientX = e.clientX;
         }
 
@@ -3724,3 +3717,4 @@ window.updateUI = function() {
 </script>
 </body>
 </html>
+
