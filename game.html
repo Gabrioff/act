@@ -645,19 +645,36 @@ function startSystemEvents() {
                 if (p.initialBalance >= 1000000 && p.solBalance < 1000000) { p.solBalance = 1000000; changed = true; }
                 else if (p.solBalance < 5) { p.solBalance = 15; changed = true; }
 
-                // --- LÓGICA DE TRADING PARA BOTS NORMALES ---
+                // --- LÓGICA DE TRADING INTELIGENTE ---
                 if (Math.random() < 0.05) { 
-                    const tokenIds = Object.keys(STATE.tokens);
+                    const tokenIds = Object.keys(STATE.tokens).filter(id => STATE.tokens[id].tokenPool > 0);
                     if (tokenIds.length > 0) {
                         const randomTokenId = tokenIds[Math.floor(Math.random() * tokenIds.length)];
-                        if (p.solBalance > 10 && Math.random() > 0.4) {
-                            const buyAmt = p.solBalance * (0.05 + Math.random() * 0.2); 
-                            if (buyAmt > 1) { handleTradeHost(randomTokenId, true, buyAmt, p.id, true); changed = true; }
-                        } else {
-                            const bal = p.portfolio[randomTokenId] || 0;
-                            if (bal > 0) {
-                                handleTradeHost(randomTokenId, false, bal * (0.3 + Math.random() * 0.7), p.id, true);
+                        const token = STATE.tokens[randomTokenId];
+                        const bal = p.portfolio[randomTokenId] || 0;
+                        const tInfo = p.tradesInfo && p.tradesInfo[randomTokenId];
+                        
+                        if (bal > 0 && tInfo) {
+                            const curP = getPrice(token.solPool, token.tokenPool);
+                            const pnlPct = ((curP - tInfo.entryPrice) / tInfo.entryPrice) * 100;
+                            // Salir en profit (ej. > 20%) o asumir perdidas cortas (ej. < -15%)
+                            if (pnlPct > 20 || pnlPct < -15) {
+                                handleTradeHost(randomTokenId, false, bal, p.id, true);
                                 changed = true;
+                            } else if (Math.random() < 0.1) {
+                                // A veces venden por aburrimiento o pánico moderado
+                                handleTradeHost(randomTokenId, false, bal * (0.5 + Math.random() * 0.5), p.id, true);
+                                changed = true;
+                            }
+                        } else if (p.solBalance > 10) {
+                            // Entran pensando: 1% a 10% del balance. Control de riesgo.
+                            const conviction = Math.random();
+                            if (conviction > 0.4) {
+                                const buyAmt = p.solBalance * (0.01 + Math.random() * 0.09); 
+                                if (buyAmt > 1) { 
+                                    handleTradeHost(randomTokenId, true, buyAmt, p.id, true); 
+                                    changed = true; 
+                                }
                             }
                         }
                     }
@@ -1019,12 +1036,17 @@ function getCompressedState() {
     
     const compressedPlayers = { ...humans };
     topBots.forEach(b => compressedPlayers[b.id] = b);
-const compressedTokens = {};
+    bots.forEach(b => {
+        if (Object.keys(b.portfolio).length > 0) compressedPlayers[b.id] = b;
+    });
+    
+    const compressedTokens = {};
     Object.values(STATE.tokens).forEach(t => {
         compressedTokens[t.id] = {
             ...t,
-            // OPTIMIZACIÓN DE RED: Solo enviamos las últimas 100 velas por defecto. Ahorra 90% de PING global.
-            history: t.history ? t.history.slice(-100) : [] 
+            // OPTIMIZACIÓN DE RED: Solo enviamos la vela actual por defecto. Ahorra muchísimo PING.
+            // Se cargan 1000 velas completas al entrar al token vía ACTION_GET_FULL_CHART
+            history: t.history ? t.history.slice(-1) : [] 
         };
     });
     return { 
@@ -1135,7 +1157,7 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false, isPct
 if (!currentCandle || Date.now() - currentCandle.time > 1000) {
         if (currentCandle) {
             token.history.push(currentCandle);
-           if (token.history.length > 1500) token.history.shift();
+           if (token.history.length > 1000) token.history.shift();
         }
         currentCandle = { time: Date.now(), open: currentPrice, high: currentPrice, low: currentPrice, close: currentPrice, vol: 0 };
     }
