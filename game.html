@@ -579,10 +579,19 @@ function startHostAutoSave() {
     
     autosaveInterval = setInterval(() => {
         if (STATE.gameState === 'playing') {
-            const saveData = { players: STATE.players, tokens: STATE.tokens, roomConfig: STATE.roomConfig, chat: STATE.chat, posts: STATE.posts, gameState: STATE.gameState, races: STATE.races };
-            const jsonStr = JSON.stringify(saveData);
-            sessionStorage.setItem('degen_savegame', jsonStr);
-            localStorage.setItem('degen_autosave', jsonStr); 
+            try {
+                const tokensToSave = {};
+                Object.keys(STATE.tokens).forEach(tid => {
+                    const t = STATE.tokens[tid];
+                    tokensToSave[tid] = { ...t, history: t.history ? t.history.slice(-500) : [] };
+                });
+                const saveData = { players: STATE.players, tokens: tokensToSave, roomConfig: STATE.roomConfig, chat: STATE.chat.slice(0, 50), posts: STATE.posts.slice(0, 50), gameState: STATE.gameState, races: STATE.races };
+                const jsonStr = JSON.stringify(saveData);
+                sessionStorage.setItem('degen_savegame', jsonStr);
+                localStorage.setItem('degen_autosave', jsonStr); 
+            } catch (e) {
+                console.warn("Autosave falló (posible límite de cuota):", e);
+            }
         }
     }, 5000);
 }
@@ -635,6 +644,24 @@ function startSystemEvents() {
             if (p.isBot && !p.id.startsWith('SYSTEM_')) {
                 if (p.initialBalance >= 1000000 && p.solBalance < 1000000) { p.solBalance = 1000000; changed = true; }
                 else if (p.solBalance < 5) { p.solBalance = 15; changed = true; }
+
+                // --- LÓGICA DE TRADING PARA BOTS NORMALES ---
+                if (Math.random() < 0.05) { 
+                    const tokenIds = Object.keys(STATE.tokens);
+                    if (tokenIds.length > 0) {
+                        const randomTokenId = tokenIds[Math.floor(Math.random() * tokenIds.length)];
+                        if (p.solBalance > 10 && Math.random() > 0.4) {
+                            const buyAmt = p.solBalance * (0.05 + Math.random() * 0.2); 
+                            if (buyAmt > 1) { handleTradeHost(randomTokenId, true, buyAmt, p.id, true); changed = true; }
+                        } else {
+                            const bal = p.portfolio[randomTokenId] || 0;
+                            if (bal > 0) {
+                                handleTradeHost(randomTokenId, false, bal * (0.3 + Math.random() * 0.7), p.id, true);
+                                changed = true;
+                            }
+                        }
+                    }
+                }
             }
             if (p.volBots) {
                 Object.keys(p.volBots).forEach(tid => {
@@ -1108,7 +1135,7 @@ function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false, isPct
 if (!currentCandle || Date.now() - currentCandle.time > 1000) {
         if (currentCandle) {
             token.history.push(currentCandle);
-           if (token.history.length > 5000) token.history.shift();
+           if (token.history.length > 1500) token.history.shift();
         }
         currentCandle = { time: Date.now(), open: currentPrice, high: currentPrice, low: currentPrice, close: currentPrice, vol: 0 };
     }
