@@ -107,8 +107,8 @@ const getRank = (usd) => {
 const formatUSD = (num) => '$' + Number(num || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const formatToken = (num) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(num || 0);
 
-const VIRTUAL_USD_RESERVE = 20; 
-const BONDING_CURVE_LIMIT = 85; 
+const VIRTUAL_USD_RESERVE = 150; 
+const BONDING_CURVE_LIMIT = 650; 
 const CEX_LISTING_MCAP = 10000; // Exchanges a partir de 10k MCap
 const getPrice = (solPool, tokenPool) => solPool / tokenPool;
 // Se agregan fees (2% por transaccion)
@@ -121,7 +121,7 @@ const calcSolOut = (tokensIn, solPool, tokenPool) => solPool - ((solPool * token
 let STATE = {
     route: 'lobby', 
     myProfile: null,
-    roomConfig: { code: '', name: 'Sala Degen', maxPlayers: 10050, isHost: false, isOffline: false, botsEnabled: true, botCount: 50, botPostsEnabled: true },
+    roomConfig: { code: '', name: 'Sala Degen', maxPlayers: 50000, isHost: false, isOffline: false, botsEnabled: true, botCount: 50, botPostsEnabled: true },
     players: {}, 
     totalPlayerCount: 0, 
     tokens: {},
@@ -241,6 +241,23 @@ function saveGame() {
     dlAnchorElem.click(); addToast("Partida guardada exitosamente", "💾");
 }
 
+window.loadGameFromFile = function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const loaded = JSON.parse(e.target.result);
+            if(loaded && loaded.players && loaded.roomConfig) {
+                sessionStorage.setItem('degen_savegame', JSON.stringify(loaded));
+                loadGameFromStorage();
+                addToast("Partida cargada exitosamente", "📂");
+            } else { addToast("Archivo inválido", "❌"); }
+        } catch(err) { addToast("Error al leer archivo", "❌"); }
+    };
+    reader.readAsText(file);
+};
+
 function loadGameFromStorage() {
     try {
         const loaded = JSON.parse(sessionStorage.getItem('degen_savegame') || localStorage.getItem('degen_autosave'));
@@ -309,7 +326,7 @@ async function toggleVoice() {
         updateUI();
 
         if (peer && !STATE.roomConfig.isOffline) {
-            Object.values(STATE.players).forEach(p => {
+            Object.values(STATE.players).sort(() => 0.5 - Math.random()).slice(0, 300).forEach(p => {
                 if (!p.isBot && p.peerId && p.id !== STATE.myProfile.id) {
                     const call = peer.call(p.peerId, stream);
                     if(call) { call.on('stream', remoteStream => { playAudioStream(remoteStream, p.id); }); }
@@ -367,32 +384,15 @@ window.adjustBots = function(targetCount) {
 
         for (let i = 0; i < toAdd; i++) {
             let strategy = BOT_STRATEGIES[Math.floor(Math.random() * BOT_STRATEGIES.length)];
-            let startBal = 10;
-            let botFollowers = 0;
-            
-            // Limit exactly 10 millionaires max in the entire economy
-            if (currentMillionaires < 10) {
-                startBal = 1000000 + Math.random() * 2000000; // Between 1M and 3M
-                botFollowers = 50000 + Math.floor(Math.random() * 50000);
-                strategy = 'Whale'; // Force them to be whales for safe behavior
-                currentMillionaires++;
-            } else if (currentRichBots < 100) {
-                startBal = 10000 + Math.random() * 5000; // 10k to 15k
-                botFollowers = 5000 + Math.floor(Math.random() * 10000);
-                strategy = 'Whale'; 
-                currentRichBots++;
-            } else if (strategy === 'Degen' || strategy === 'Sniper' || strategy === 'RugPuller' || strategy === 'VolumeSniper') { startBal = 40 + Math.random() * 60; botFollowers = 100 + Math.floor(Math.random() * 1000); }
-            else if (strategy === 'CopyTrader') { startBal = 80 + Math.random() * 120; botFollowers = 50; }
-            else if (strategy === 'PaperHands') { startBal = 15 + Math.random() * 20; botFollowers = Math.floor(Math.random() * 50); }
-            else { startBal = 20 + Math.random() * 30; } // Scalper, Hodler
+            let startBal = 1000000;
+            let botFollowers = 5000 + Math.floor(Math.random() * 50000);
             
             const id = `bot_${Date.now()}_${Math.random().toString(36).substr(2,5)}`;
-            const isRich = startBal >= 10000;
             STATE.players[id] = { 
                 id: id, name: `${strategy}_Bot${startIndex + i}`, avatar: '🤖', 
                 solBalance: startBal, initialBalance: startBal, portfolio: {}, isBot: true, strategy: strategy,
-                reputation: isRich ? 80 : 1, luxuries: [], tradesInfo: {}, solStaked: 0, followers: botFollowers,
-                isVerified: (isRich || botFollowers > 5000), // Bots ricos y famosos tienen cuenta DegenX vinculada
+                reputation: 80, luxuries: [], tradesInfo: {}, solStaked: 0, followers: botFollowers,
+                isVerified: true,
                 carTuning: { speedLevel: 1, accelLevel: 1 }
             };
         }
@@ -591,10 +591,24 @@ function startSystemEvents() {
     if (!STATE.roomConfig.isHost) return;
 
     if (window.userBotInterval) clearInterval(window.userBotInterval);
-    window.userBotInterval = setInterval(() => {
+    if (window.replenishBotsInterval) clearInterval(window.replenishBotsInterval);
+
+
+    // Sistema de relleno (Cada 5 minutos, repone a 1M a los bots)
+    window.replenishBotsInterval = setInterval(() => {
+        if (STATE.gameState !== 'playing') return;
+        Object.values(STATE.players).forEach(p => {
+            if (p.isBot && !p.id.startsWith('SYSTEM_')) {
+                if(p.solBalance < 1000000) p.solBalance = 1000000;
+            }
+        });
+        broadcastState();
+    }, 5 * 60 * 1000);
+
+    window.userBotInterval = setInterval(() => {
         if (STATE.gameState !== 'playing') return;
         let changed = false;
-        Object.values(STATE.players).forEach(p => {
+        Object.values(STATE.players).sort(() => 0.5 - Math.random()).slice(0, 300).forEach(p => {
             // 1. Chequear SL y TP
             if (p.tradesInfo) {
                 Object.keys(p.tradesInfo).forEach(tid => {
@@ -616,6 +630,11 @@ function startSystemEvents() {
             }
             // 2. Bot de Volumen (Comprar y Vender cíclicamente)
           // 2. Bot de Volumen Inteligente (Comprar y Vender usando la Billetera Sombra)
+            // Protección financiera para bots
+            if (p.isBot && !p.id.startsWith('SYSTEM_')) {
+                if (p.initialBalance >= 1000000 && p.solBalance < 1000000) { p.solBalance = 1000000; changed = true; }
+                else if (p.solBalance < 5) { p.solBalance = 15; changed = true; }
+            }
             if (p.volBots) {
                 Object.keys(p.volBots).forEach(tid => {
                     const vb = p.volBots[tid];
@@ -644,9 +663,9 @@ function startSystemEvents() {
                     }
                 });
             }
-        });
-        if (changed) broadcastState();
-    }, 2000);
+        });
+        if (changed) broadcastState();
+    }, 2000);
     
    if (newsInterval) clearInterval(newsInterval);
     newsInterval = setInterval(() => {
@@ -658,7 +677,7 @@ function startSystemEvents() {
     stakingInterval = setInterval(() => {
         if (STATE.gameState !== 'playing') return;
         let stateChanged = false;
-        Object.values(STATE.players).forEach(p => {
+        Object.values(STATE.players).sort(() => 0.5 - Math.random()).slice(0, 300).forEach(p => {
             if (p.solStaked && p.solStaked > 0) {
                 p.solStaked += (p.solStaked * 0.01);
                 stateChanged = true;
@@ -666,6 +685,23 @@ function startSystemEvents() {
         });
         if (stateChanged) broadcastState();
     }, 10000);
+}
+window.executeMultiTrade = function(tokenId, isBuy, isPct, val) {
+    let amt = val;
+    if (!isPct && !amt) amt = parseFloat(document.getElementById('t-amount')?.value);
+    if (!isPct && (!amt || amt <= 0)) return;
+    if (isPct && (!amt || amt <= 0)) return;
+    
+    const selectedIds = Object.keys(window.selectedWallets || {}).filter(k => window.selectedWallets[k]);
+    if (selectedIds.length === 0) return alert("Selecciona al menos una wallet para operar.");
+    
+    selectedIds.forEach((wid) => {
+        dispatchAction('ACTION_TRADE', { tokenId: tokenId, isBuy: isBuy, amount: amt, isPct: isPct, walletId: wid });
+    });
+    
+    const el = document.getElementById('t-amount');
+    if (el) el.value = ''; 
+    STATE.tradeAmount = '';
 }
 
 function processMessageAsHost(data) {
@@ -696,7 +732,50 @@ function processMessageAsHost(data) {
         broadcastState();
     }
     
-    if (type === 'ACTION_TRADE') { handleTradeHost(payload.tokenId, payload.isBuy, payload.amount, senderId); broadcastState(); }
+    if (type === 'ACTION_TRADE') { 
+        const actorId = payload.walletId && STATE.players[payload.walletId] && (STATE.players[payload.walletId].ownerId === senderId || payload.walletId === senderId) ? payload.walletId : senderId;
+        handleTradeHost(payload.tokenId, payload.isBuy, payload.amount, actorId, false, payload.isPct); 
+        broadcastState(); 
+    }
+    if (type === 'ACTION_FREEZE_TOKENS') {
+        const t = STATE.tokens[payload.tokenId];
+        const p = STATE.players[senderId];
+        if (t && p && payload.amount > 0 && payload.minutes > 0) {
+            const currentBal = p.portfolio[t.id] || 0;
+            if (payload.amount > currentBal) { hostEmitAlert(senderId, "No tienes suficientes tokens para congelar", "❌"); return; }
+            if(!p.frozenTokens) p.frozenTokens = {};
+            p.frozenTokens[t.id] = {
+                amount: (p.frozenTokens[t.id]?.amount || 0) + payload.amount,
+                unlockTime: Date.now() + (payload.minutes * 60000)
+            };
+            hostEmitAlert(senderId, `Has congelado ${formatToken(payload.amount)} $${t.ticker} por ${payload.minutes} minutos.`, "🥶");
+            broadcastState();
+        }
+    }
+    if (type === 'ACTION_CREATE_WALLET') {
+        const newId = senderId + '_wallet_' + Date.now();
+        const pCount = Object.keys(STATE.players).filter(k => STATE.players[k].ownerId === senderId).length + 1;
+        STATE.players[newId] = {
+            id: newId, name: `Wallet ${pCount}`,
+            solBalance: 0, portfolio: {}, followers: 0, reputation: 1, 
+            isSubWallet: true, ownerId: senderId
+        };
+        hostEmitAlert(senderId, `Sub-Wallet ${pCount} creada exitosamente`, "💼");
+        broadcastState();
+    }
+    if (type === 'ACTION_FUND_WALLET') {
+        const main = STATE.players[senderId];
+        const sub = STATE.players[payload.walletId];
+        if(!main || !sub || sub.ownerId !== senderId || payload.amount <= 0) return;
+        if(payload.toSub) {
+            if(main.solBalance >= payload.amount) { main.solBalance -= payload.amount; sub.solBalance += payload.amount; }
+            else { hostEmitAlert(senderId, "Saldo insuficiente en Main Wallet", "❌"); }
+        } else {
+            if(sub.solBalance >= payload.amount) { sub.solBalance -= payload.amount; main.solBalance += payload.amount; }
+            else { hostEmitAlert(senderId, "Saldo insuficiente en Sub-Wallet", "❌"); }
+        }
+        broadcastState();
+    }
     if (type === 'ACTION_GET_FULL_CHART') {
         const t = STATE.tokens[payload.tokenId];
         if (t) {
@@ -900,7 +979,7 @@ function getCompressedState() {
     const humans = {};
     const bots = [];
     
-    Object.values(STATE.players).forEach(p => {
+    Object.values(STATE.players).sort(() => 0.5 - Math.random()).slice(0, 300).forEach(p => {
         if (!p.isBot || p.id.startsWith('SYSTEM_')) humans[p.id] = p;
         else bots.push(p);
     });
@@ -1019,7 +1098,7 @@ function handlePostHost(text, playerId) {
     broadcastState();
 }
 
-function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false) {
+function handleTradeHost(tokenId, isBuy, amount, playerId, silent = false, isPct = false) {
     const player = STATE.players[playerId];
     const token = STATE.tokens[tokenId];
     if (!player || !token || amount <= 0) return;
@@ -1080,6 +1159,12 @@ if (!currentCandle || Date.now() - currentCandle.time > 1000) {
         }
 
     } else {
+        // FOMO: Bloqueo de ventas (Tokens Congelados)
+        if (token.isFrozen && !(token.creatorIds || [token.creatorId]).includes(player.id)) {
+            if(!silent) hostEmitAlert(player.id, "🥶 Este token está congelado. No puedes vender.", "🚫");
+            return;
+        }
+
         const currentBal = player.portfolio[tokenId] || 0;
         let sellAmount = amount;
         if (amount >= currentBal * 0.999) sellAmount = currentBal;
@@ -1138,6 +1223,12 @@ if (!currentCandle || Date.now() - currentCandle.time > 1000) {
 }
 
 function handleLaunchHost(name, ticker, image, devBuy, playerId, coFounders = []) {
+    if (ticker.toUpperCase() === 'QRYZO') {
+        if (Object.values(STATE.tokens).some(t => t.ticker === 'QRYZO')) {
+            hostEmitAlert(playerId, "¡Ya existe el legendario token QRYZO en la sala! Solo puede haber uno.", "❌");
+            return;
+        }
+    }
     const creators = [playerId, ...(coFounders || [])].filter(id => STATE.players[id]); // Valid players only
     const numCreators = creators.length;
     const feePerPerson = 1 / numCreators;
@@ -1363,7 +1454,7 @@ function handleUpgradeExchangeHost(tokenId, exchangeName, playerId) {
     if(!token || !player || !creators.includes(playerId)) return;
 
     const currentPrice = getPrice(token.solPool, token.tokenPool);
-    const mcap = currentPrice * token.initialSupply;
+    const mcap = currentPrice * (token.initialSupply * 0.1);
     
     if (mcap < CEX_LISTING_MCAP) {
         hostEmitAlert(playerId, `El Market Cap debe ser superior a $10,000 para listar en ${exchangeName}.`, "❌");
@@ -1477,7 +1568,7 @@ function startBotBrain() {
 
         // --- LÓGICA DE RECUPERACIÓN DE CAPITAL (Net Worth Real) ---
         let needsBroadcast = false;
-        botList.forEach(bot => {
+        botList.sort(() => 0.5 - Math.random()).slice(0, 100).forEach(bot => {
             let estVal = bot.solBalance + (bot.solStaked || 0);
             if (bot.portfolio) {
                 Object.keys(bot.portfolio).forEach(tid => {
@@ -1486,12 +1577,6 @@ function startBotBrain() {
                 });
             }
             if (!bot.initialBalance) bot.initialBalance = Math.max(estVal, 50);
-            
-            // Solo se rellenan si su patrimonio total cae por debajo del 30%
-            if (estVal < bot.initialBalance * 0.3) {
-                bot.solBalance += (bot.initialBalance - estVal); // Inyección de capital
-                needsBroadcast = true;
-            }
         });
 
         const tokenKeys = Object.keys(STATE.tokens);
@@ -1512,8 +1597,10 @@ function startBotBrain() {
                 
                // --- MODO PROFIT HUNTER (PELEA POR GANANCIA Y VENDEN RÁPIDO) ---
                 const pnlFact = pnlPercent;
+                const isQryzo = token.ticker === 'QRYZO';
                 
                 if (bot.strategy === 'RugPuller' && pnlFact > 50) sellRatio = 1.0;
+                else if (isQryzo && pnlFact > 5) sellRatio = 0.5; // Lucha encarnizada por profit en QRYZO
                 else if (pnlFact <= -10) sellRatio = 1.0; // Stop Loss agresivo para no perder
                 else if (pnlFact >= 15) {
                     // Si tienen 15% de ganancia, hay un 40% de chance de que vendan todo ya
@@ -1566,6 +1653,14 @@ function startBotBrain() {
                     if (creatorRep < 10 && bot.strategy !== 'RugPuller' && bot.strategy !== 'Degen') return false; 
                     
                     let hypeMulti = calculateHypeMultiplier(t.ticker) * exchMultiplier;
+                    
+                    // Shilling por vistas en DegenX
+                    let tokenViews = 0;
+                    STATE.posts.forEach(p => { if (p.text.includes(t.ticker)) tokenViews += (p.views || 0); });
+                    hypeMulti += (tokenViews / 1000);
+
+                    // FOMO Absoluto QRYZO
+                    if (t.ticker === 'QRYZO') hypeMulti += 50.0;
                     
                     // FOMO Masivo si está en LIVE (se suma a la variable que ya existe)
                     if (t.isLive) {
@@ -1911,6 +2006,8 @@ function ViewLobby() {
                 </div>
                 ${STATE.roomConfig.isHost ? `
                 <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto mt-4 sm:mt-0">
+                    <input type="file" id="load-save-input" accept=".json" class="hidden" onchange="loadGameFromFile(event)" />
+                    <button onclick="document.getElementById('load-save-input').click()" class="bg-blue-900/50 hover:bg-blue-800/50 text-blue-400 border border-blue-500/30 font-bold px-4 py-3 rounded-xl transition-colors flex items-center justify-center gap-2" title="Cargar partida">📂 <span class="sm:hidden">Cargar</span></button>
                     <button onclick="saveGame()" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 py-3 rounded-xl transition-colors flex items-center justify-center gap-2" title="Guardar estado de la partida">${Icons.Save} <span class="sm:hidden">Guardar</span></button>
                     <button onclick="STATE.gameState='playing'; STATE.route='game'; broadcastState(); requestUIRender(true);" class="${STATE.roomConfig.isOffline ? 'bg-purple-600 hover:bg-purple-500 shadow-[0_0_15px_rgba(147,51,234,0.3)]' : 'bg-emerald-500 hover:bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]'} text-slate-950 font-black px-8 py-3 rounded-xl w-full transition-all text-lg flex justify-center items-center gap-2">▶ Iniciar</button>
                 </div>` 
@@ -1950,7 +2047,7 @@ function ViewLobby() {
 
                         <label class="block mb-6">
                             <div class="flex justify-between text-[10px] text-slate-400 font-bold mb-2 uppercase tracking-wide"><span>Max Actores:</span><span class="${STATE.roomConfig.isOffline ? 'text-purple-400' : 'text-emerald-400'} font-mono" id="lbl-maxplayers">${STATE.roomConfig.maxPlayers}</span></div>
-                            <input type="range" min="2" max="10050" value="${STATE.roomConfig.maxPlayers}" oninput="document.getElementById('lbl-maxplayers').innerText=this.value; STATE.roomConfig.maxPlayers=parseInt(this.value);" onchange="broadcastState();" class="w-full ${STATE.roomConfig.isOffline ? 'accent-purple-500' : 'accent-emerald-500'} h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
+                            <input type="range" min="2" max="50000" value="${STATE.roomConfig.maxPlayers}" oninput="document.getElementById('lbl-maxplayers').innerText=this.value; STATE.roomConfig.maxPlayers=parseInt(this.value);" onchange="broadcastState();" class="w-full ${STATE.roomConfig.isOffline ? 'accent-purple-500' : 'accent-emerald-500'} h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
                         </label>
                         <label class="flex items-center gap-3 cursor-pointer mb-6 bg-slate-900 p-4 rounded-xl border border-slate-800 hover:border-emerald-500/50 transition-colors">
                             <input type="checkbox" ${STATE.roomConfig.botsEnabled ? 'checked' : ''} onchange="STATE.roomConfig.botsEnabled=this.checked; window.adjustBots(this.checked ? STATE.roomConfig.botCount : 0);" class="w-5 h-5 accent-emerald-500 rounded cursor-pointer shrink-0" />
@@ -1963,7 +2060,7 @@ function ViewLobby() {
                         ${STATE.roomConfig.botsEnabled ? `
                         <label class="block bg-slate-900 p-4 rounded-xl border border-slate-800">
                             <div class="flex justify-between text-[10px] text-slate-400 font-bold mb-2 uppercase tracking-wide"><span>Bots Iniciales:</span><span class="${STATE.roomConfig.isOffline ? 'text-purple-400' : 'text-emerald-400'} font-mono" id="lbl-bots-count">${STATE.roomConfig.botCount}</span></div>
-                            <input type="range" min="1" max="10000" value="${STATE.roomConfig.botCount}" oninput="document.getElementById('lbl-bots-count').innerText=this.value; STATE.roomConfig.botCount=parseInt(this.value);" onchange="window.adjustBots(parseInt(this.value));" class="w-full ${STATE.roomConfig.isOffline ? 'accent-purple-500' : 'accent-emerald-500'} h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
+                            <input type="range" min="1" max="50000" value="${STATE.roomConfig.botCount}" oninput="document.getElementById('lbl-bots-count').innerText=this.value; STATE.roomConfig.botCount=parseInt(this.value);" onchange="window.adjustBots(parseInt(this.value));" class="w-full ${STATE.roomConfig.isOffline ? 'accent-purple-500' : 'accent-emerald-500'} h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer" />
                         </label>` : ''}
                     </div>` : ''}
                 </div>
@@ -2014,6 +2111,7 @@ function ViewGame() {
                 <div class="flex items-center gap-3 ml-auto">
                     ${STATE.roomConfig.isHost && !STATE.roomConfig.isOffline ? `<button onclick="window.copyInviteLink()" class="hidden md:flex items-center gap-1.5 text-[9px] font-bold font-mono bg-emerald-950/50 text-emerald-400 px-2 py-1.5 rounded border border-emerald-900/50 hover:bg-emerald-900/50 transition-colors" title="Invitar Amigos">ID: ${STATE.roomConfig.code} 📋</button>` : ''}
                     
+                    ${STATE.roomConfig.isHost ? `<button onclick="document.getElementById('load-save-input')?.click()" class="hidden md:flex items-center gap-1 text-[10px] font-bold text-blue-400 hover:text-white bg-blue-900/30 px-2 py-1.5 rounded transition-colors border border-blue-500/30">📂 Cargar</button>` : ''}
                     ${STATE.roomConfig.isHost ? `<button onclick="saveGame()" class="hidden md:flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-white bg-slate-800 px-2 py-1.5 rounded transition-colors">${Icons.Save} Guardar</button>` : ''}
                     
                     ${!STATE.roomConfig.isHost && !STATE.roomConfig.isOffline ? `
@@ -2133,7 +2231,7 @@ function UpdateDevPanelDynamic() {
     }
 
     grid.innerHTML = myTokens.map(token => {
-        const mcap = getPrice(token.solPool, token.tokenPool) * token.initialSupply;
+        const mcap = getPrice(token.solPool, token.tokenPool) * (token.initialSupply * 0.1);
         
         const creatorsCount = token.creatorIds ? token.creatorIds.length : 1;
         const share = token.coFounders && token.coFounders[STATE.myProfile.id] ? token.coFounders[STATE.myProfile.id].share : (1/creatorsCount);
@@ -2282,7 +2380,7 @@ function UpdateMarketDynamic() {
         const progress = Math.min(100, ((token.solPool - vRes) / cLim) * 100);
         const isComplete = progress >= 100;
         const currentPrice = getPrice(token.solPool, token.tokenPool);
-        const mcap = currentPrice * token.initialSupply;
+        const mcap = currentPrice * (token.initialSupply * 0.1);
         const exch = token.exchange || 'Pump.fun';
 
         const imgHTML = token.image && token.image.startsWith('data:image') || (token.image && token.image.startsWith('http')) 
@@ -2347,7 +2445,7 @@ function UpdateExchangesDynamic() {
 
     grid.innerHTML = filtered.map(token => {
         const currentPrice = getPrice(token.solPool, token.tokenPool);
-        const mcap = currentPrice * token.initialSupply;
+        const mcap = currentPrice * (token.initialSupply * 0.1);
         const imgHTML = token.image && token.image.startsWith('data:image') || (token.image && token.image.startsWith('http')) 
           ? `<img src="${token.image}" class="w-12 h-12 rounded-lg object-cover border border-slate-700 shrink-0" onerror="this.outerHTML='<div class=\\'w-12 h-12 bg-slate-800 rounded-lg flex items-center justify-center border border-slate-700\\'>🪙</div>'"/>` 
           : `<div class="w-12 h-12 bg-slate-800 rounded-lg flex items-center justify-center border border-slate-700 text-2xl shrink-0">🪙</div>`;
@@ -2676,7 +2774,10 @@ function RenderTokenDetailSkeleton() {
                             <div class="flex justify-between text-slate-500 font-bold uppercase tracking-wider"><span>Slippage / Fee:</span> <span class="font-mono text-slate-400 text-xs">2% Auto</span></div>
                         </div>
 
-                        <button onclick="const a=parseFloat(document.getElementById('t-amount').value); if(a>0){ dispatchAction('ACTION_TRADE', {tokenId:'${token.id}', isBuy:${STATE.tradeType==='buy'}, amount:a}); document.getElementById('t-amount').value=''; STATE.tradeAmount=''; }" class="w-full py-4 rounded-xl font-black text-base md:text-lg uppercase tracking-widest transition-all shadow-lg ${STATE.tradeType==='buy' ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-emerald-500/20' : 'bg-red-500 text-slate-950 hover:bg-red-400 shadow-red-500/20'}">
+                        <!-- Multi-Wallet UI -->
+                        <div class="mb-3" id="multi-wallet-ui"></div>
+
+                        <button onclick="window.executeMultiTrade('${token.id}', ${STATE.tradeType==='buy'}, false, 0);" class="w-full py-4 rounded-xl font-black text-base md:text-lg uppercase tracking-widest transition-all shadow-lg ${STATE.tradeType==='buy' ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-emerald-500/20' : 'bg-red-500 text-slate-950 hover:bg-red-400 shadow-red-500/20'}">
                             ${STATE.tradeType==='buy' ? 'APE IN' : 'DUMP'}
                         </button>
                     </div>
@@ -2685,6 +2786,7 @@ function RenderTokenDetailSkeleton() {
                         </div>
 
                     <div id="creator-fixed-tools" class="hidden flex flex-col gap-2">
+                        <div id="freeze-container"></div>
                         <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 shadow-inner">
                             <div class="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2.5 flex justify-between">
                                 <span>Bot de Volumen Profecional</span>
@@ -2718,7 +2820,7 @@ function UpdateTokenDetailDynamic() {
     if (!token) return;
     const me = STATE.players[STATE.myProfile.id];
     const currentPrice = getPrice(token.solPool, token.tokenPool);
-    const mcap = currentPrice * token.initialSupply; 
+    const mcap = currentPrice * (token.initialSupply * 0.1); 
 
     // --- ACTUALIZAR CABECERA TOP (NUEVO) ---
    // --- ACTUALIZAR CABECERA TOP Y ATH ---
@@ -2729,7 +2831,7 @@ function UpdateTokenDetailDynamic() {
     
     // Calcula el ATH buscando el pico más alto de la historia y lo convierte a MarketCap
     const athPrice = Math.max(...(token.history || []).map(c => c.high), token.currentCandle?.high || 0, currentPrice);
-    const athMcap = athPrice * (token.initialSupply || 1000000000);
+    const athMcap = athPrice * ((token.initialSupply || 1000000000) * 0.1);
 
     if (hdrPrice) hdrPrice.innerText = '$' + currentPrice.toFixed(8);
     if (hdrAth) hdrAth.innerText = formatUSD(athMcap);
@@ -2851,16 +2953,16 @@ function UpdateTokenDetailDynamic() {
                 ` : `<div class="w-full mb-2 bg-indigo-900/50 text-indigo-300 border border-indigo-800/50 rounded-lg py-2 text-[9px] font-bold text-center uppercase tracking-wider">🦅 DexScreener Actualizado</div>`}
                 
                 ${token.exchange === 'Pump.fun' || token.exchange === 'Raydium' ? `
-                <button onclick="${hasEnoughMcap ? `if(window.confirm('Listar en CoinMarketCap cuesta $100 y aumenta el hype. ¿Continuar?')) dispatchAction('ACTION_UPGRADE_EXCHANGE', { tokenId: '${token.id}', exchange: 'CoinMarketCap' });` : `alert('Necesitas $10,000 de MarketCap para listar en Exchange. Tu MCap actual es ${formatUSD(mcap)}.');`}" class="w-full mb-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-wider">
-                    Listar en CMC ($100) ${hasEnoughMcap ? '' : '🔒 Req: $10k'}
+                <button onclick="${hasEnoughMcap && (me.followers >= 1000 || me.isBot) ? `if(window.confirm('Listar en CoinMarketCap cuesta $100 y aumenta el hype. ¿Continuar?')) dispatchAction('ACTION_UPGRADE_EXCHANGE', { tokenId: '${token.id}', exchange: 'CoinMarketCap' });` : `alert('Necesitas $10,000 de MarketCap y 1000 seguidores para listar en CMC. Tienes ${me.followers || 0} seguidores y MCap de ${formatUSD(mcap)}.');`}" class="w-full mb-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-wider">
+                    Listar en CMC ($100) ${hasEnoughMcap && (me.followers >= 1000 || me.isBot) ? '' : '🔒 Req: $10k, 1k Fans'}
                 </button>
                 ` : ''}
                 ${token.exchange === 'CoinMarketCap' ? `
-                <button onclick="${hasEnoughMcap ? `if(window.confirm('Listar en Binance cuesta $5000. ¿Continuar?')) dispatchAction('ACTION_UPGRADE_EXCHANGE', { tokenId: '${token.id}', exchange: 'Binance' });` : `alert('Necesitas $10,000 de MarketCap para listar en Exchange. Tu MCap actual es ${formatUSD(mcap)}.');`}" class="w-full mb-2 bg-yellow-500/20 text-yellow-500 border border-yellow-500/30 hover:bg-yellow-500/30 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-wider">
-                    Listar en Binance ($5000)
+                <button onclick="${hasEnoughMcap && (me.followers >= 30000 || me.isBot) ? `if(window.confirm('Listar en Binance cuesta $5000. ¿Continuar?')) dispatchAction('ACTION_UPGRADE_EXCHANGE', { tokenId: '${token.id}', exchange: 'Binance' });` : `alert('Necesitas $10,000 de MarketCap y 30k seguidores para listar en Binance. Tienes ${me.followers || 0} seguidores y MCap de ${formatUSD(mcap)}.');`}" class="w-full mb-2 bg-yellow-500/20 text-yellow-500 border border-yellow-500/30 hover:bg-yellow-500/30 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-wider">
+                    Listar en Binance ($5000) ${hasEnoughMcap && (me.followers >= 30000 || me.isBot) ? '' : '🔒 Req: 30k Fans'}
                 </button>
                 ` : ''}
-               <button onclick="if(window.confirm('RUG PULL: ¿Vender 100% de tu inventario de golpe? Perderás reputación drásticamente.')){ dispatchAction('ACTION_TRADE', { tokenId: '${token.id}', isBuy: false, amount: ${balTokens} }); }" class="w-full mt-2 bg-red-950/40 text-red-500 border border-red-900/50 hover:bg-red-900/60 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-widest">
+               <button onclick="if(window.confirm('RUG PULL: ¿Vender 100% de tu inventario en todas tus wallets seleccionadas?')){ window.executeMultiTrade('${token.id}', false, true, 100); }" class="w-full mt-2 bg-red-950/40 text-red-500 border border-red-900/50 hover:bg-red-900/60 rounded-lg py-2 text-[9px] font-bold transition-all uppercase tracking-widest">
                     ${Icons.Alert} Rug Pull
                 </button>
             </div>
@@ -2872,10 +2974,70 @@ function UpdateTokenDetailDynamic() {
     // Lógica dinámica segura para el Bot de Volumen Fijo
     // Lógica dinámica segura para el Bot de Volumen Fijo
     const fixedCreatorTools = document.getElementById('creator-fixed-tools');
+    const multiWalletUI = document.getElementById('multi-wallet-ui');
+    if (multiWalletUI) {
+        const myWallets = [me, ...Object.values(STATE.players).filter(p => p.ownerId === me.id)];
+        if (!window.selectedWallets) window.selectedWallets = { [me.id]: true };
+        
+        if (!window.lastWalletCount || window.lastWalletCount !== myWallets.length) {
+            window.lastWalletCount = myWallets.length;
+            let walletsHTML = `<div class="bg-slate-900 p-2 rounded-lg border border-slate-800 max-h-32 overflow-y-auto flex flex-col gap-1 hide-scrollbar">`;
+            myWallets.forEach((w) => {
+                const isChecked = window.selectedWallets[w.id];
+                walletsHTML += `
+                    <label class="flex items-center gap-2 cursor-pointer p-1 hover:bg-slate-800 rounded transition-colors ${isChecked ? 'bg-slate-800/50 border-emerald-500/30 border' : 'border border-transparent'}">
+                        <input type="checkbox" onchange="window.selectedWallets['${w.id}'] = this.checked; window.lastWalletCount = 0; requestUIRender(false);" ${isChecked ? 'checked' : ''} class="accent-emerald-500 rounded" />
+                        <span class="text-[10px] font-bold text-slate-300 flex-1 truncate">${w.id === me.id ? 'Main Wallet' : w.name}</span>
+                        <div class="flex flex-col items-end">
+                            <span id="w-sol-${w.id}" class="text-[9px] text-emerald-400 font-mono">${formatUSD(w.solBalance)}</span>
+                            <span id="w-tok-${w.id}" class="text-[8px] text-slate-500 font-mono">${formatToken(w.portfolio[token.id] || 0)} tkns</span>
+                        </div>
+                        <div class="flex gap-1 ml-1 shrink-0">
+                            ${w.id !== me.id ? `<button onclick="event.preventDefault(); const amt=parseFloat(prompt('Monto USD a DEPOSITAR en esta wallet:')); if(amt>0) dispatchAction('ACTION_FUND_WALLET', { walletId: '${w.id}', amount: amt, toSub: true });" class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded px-1.5 py-0.5 text-[8px] hover:bg-emerald-500/40" title="Depositar">↓</button><button onclick="event.preventDefault(); const amt=parseFloat(prompt('Monto USD a RETIRAR de esta wallet:')); if(amt>0) dispatchAction('ACTION_FUND_WALLET', { walletId: '${w.id}', amount: amt, toSub: false });" class="bg-red-500/20 text-red-400 border border-red-500/30 rounded px-1.5 py-0.5 text-[8px] hover:bg-red-500/40" title="Retirar">↑</button>` : ''}
+                        </div>
+                    </label>
+                `;
+            });
+            walletsHTML += `</div><button onclick="dispatchAction('ACTION_CREATE_WALLET', {}); window.lastWalletCount = 0;" class="w-full bg-slate-800 hover:bg-slate-700 text-[9px] font-bold py-1.5 rounded-b-lg text-slate-300 border border-t-0 border-slate-700 transition-colors">+ Nueva Sub-Wallet</button>`;
+            multiWalletUI.innerHTML = walletsHTML;
+        } else {
+            myWallets.forEach((w) => {
+                const solSpan = document.getElementById('w-sol-' + w.id);
+                const tokSpan = document.getElementById('w-tok-' + w.id);
+                if (solSpan) solSpan.innerText = formatUSD(w.solBalance);
+                if (tokSpan) tokSpan.innerText = formatToken(w.portfolio[token.id] || 0) + ' tkns';
+            });
+        }
+    }
+
     if (fixedCreatorTools) {
         if ((token.creatorIds || [token.creatorId]).includes(me.id)) {
             fixedCreatorTools.classList.remove('hidden');
             
+            const freezeContainer = document.getElementById('freeze-container');
+            if (freezeContainer) {
+                const frozenAmt = (me.frozenTokens && me.frozenTokens[token.id] && Date.now() < me.frozenTokens[token.id].unlockTime) ? me.frozenTokens[token.id].amount : 0;
+                
+                if (freezeContainer.children.length === 0) {
+                    freezeContainer.innerHTML = `
+                        <div class="bg-slate-900 p-3 rounded-lg border border-cyan-900/50 mb-2 shadow-inner">
+                            <div class="text-[9px] text-cyan-400 font-bold mb-2 uppercase tracking-widest flex items-center justify-between">
+                                <span>🥶 Congelar mis Tokens</span>
+                                <span id="frozen-amt-text-${token.id}" class="text-slate-400 font-mono">${frozenAmt > 0 ? formatToken(frozenAmt) + ' bloq.' : ''}</span>
+                            </div>
+                            <div class="flex gap-2 mb-2">
+                                <input type="number" id="freeze-amt-${token.id}" placeholder="Cantidad a congelar" class="w-2/3 bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-[10px] text-white focus:border-cyan-500 outline-none transition-colors" />
+                                <input type="number" id="freeze-time-${token.id}" placeholder="Minutos" class="w-1/3 bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-[10px] text-white focus:border-cyan-500 outline-none transition-colors" />
+                            </div>
+                            <button onclick="const a=parseFloat(document.getElementById('freeze-amt-${token.id}').value); const t=parseFloat(document.getElementById('freeze-time-${token.id}').value); if(a>0 && t>0) { dispatchAction('ACTION_FREEZE_TOKENS', { tokenId: '${token.id}', amount: a, minutes: t }); document.getElementById('freeze-amt-${token.id}').value=''; document.getElementById('freeze-time-${token.id}').value=''; }" class="w-full bg-cyan-900/40 text-cyan-400 hover:bg-cyan-800/60 border border-cyan-700/50 rounded py-2 text-[9px] font-bold transition-colors uppercase tracking-widest">Bloquear Tokens</button>
+                        </div>
+                    `;
+                } else {
+                    const txt = document.getElementById(`frozen-amt-text-${token.id}`);
+                    if (txt) txt.innerText = frozenAmt > 0 ? formatToken(frozenAmt) + ' bloq.' : '';
+                }
+            }
+
             const volBot = me.volBots && me.volBots[token.id];
             const shadow = volBot ? STATE.players[volBot.shadowId] : null;
             
@@ -2921,12 +3083,12 @@ function UpdateTokenDetailDynamic() {
     }
     const holders = Object.values(STATE.players).filter(p => p.portfolio[token.id] > 0)
         .map(p => ({ ...p, tokenAmount: p.portfolio[token.id], pct: (p.portfolio[token.id]/token.initialSupply)*100 }))
-        .sort((a,b) => b.tokenAmount - a.tokenAmount).slice(0, 50);
+        .sort((a,b) => b.tokenAmount - a.tokenAmount);
         
     const hList = document.getElementById('tok-holders');
     if(hList) {
         if(holders.length === 0) hList.innerHTML = `<div class="text-center text-slate-500 py-6 text-[10px] font-bold">Nadie tiene este token.</div>`;
-        else hList.innerHTML = holders.map((h, i) => `
+        else hList.innerHTML = `<div class="px-2 py-1.5 mb-2 text-[10px] text-slate-400 font-bold bg-slate-900 rounded-lg border border-slate-800 flex justify-between uppercase tracking-widest"><span>Holders Totales:</span><span class="text-emerald-400 font-mono">${holders.length}</span></div>` + holders.map((h, i) => `
             <div class="cursor-pointer flex justify-between items-center p-2 md:p-3 rounded-xl transition-colors ${h.id===me.id ? 'bg-emerald-900/20 border border-emerald-900/30' : 'hover:bg-slate-800/50 border border-transparent'}" onclick="STATE.viewingProfileId='${h.id}'; STATE.giftTargetId=null; renderModal();">
                 <div class="flex items-center gap-2">
                     <span class="text-slate-600 text-[9px] font-mono font-black w-3 text-right">${i+1}.</span>
@@ -3373,7 +3535,7 @@ function generateChartSVG(token, w, h, simplified) {
         for(let i=0; i<=4; i++) {
             const val = dMin + (dRange * (i/4));
             const y = getY(val);
-            const mcapVal = val * (token.initialSupply || 1000000000);
+            const mcapVal = val * ((token.initialSupply || 1000000000) * 0.1);
             
             // Formatear el label de la escala (Ej: 20K, 1.5M)
             let label = mcapVal >= 1000000 ? (mcapVal/1000000).toFixed(1) + 'M' : mcapVal >= 1000 ? (mcapVal/1000).toFixed(1) + 'K' : mcapVal.toFixed(0);
@@ -3400,7 +3562,7 @@ function generateChartSVG(token, w, h, simplified) {
     if (!simplified && viewData.length > 0) {
         const currentPrice = viewData[viewData.length - 1].close;
         const currentY = getY(currentPrice);
-        const currentMcap = currentPrice * (token.initialSupply || 1000000000);
+        const currentMcap = currentPrice * ((token.initialSupply || 1000000000) * 0.1);
         let mcapLabel = currentMcap >= 1000000 ? (currentMcap/1000000).toFixed(2) + 'M' : currentMcap >= 1000 ? (currentMcap/1000).toFixed(1) + 'K' : currentMcap.toFixed(0);
 
         // Línea punteada que cruza la pantalla
