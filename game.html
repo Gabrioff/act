@@ -253,6 +253,7 @@ window.loadGameFromFile = function(event) {
                 loadGameFromStorage();
                 addToast("Partida cargada exitosamente", "📂");
             } else { addToast("Archivo inválido", "❌"); }
+            } else { addToast("Archivo inválido", "❌"); }
         } catch(err) { addToast("Error al leer archivo", "❌"); }
     };
     reader.readAsText(file);
@@ -275,6 +276,7 @@ function loadGameFromStorage() {
             
             STATE.route = STATE.gameState === 'playing' ? 'game' : 'lobby';
             addToast("Partida restaurada", "✅"); requestUIRender(true);
+        } else { addToast("No se encontraron datos.", "❌"); setTimeout(()=>window.location.href='index.html', 2000); }
         } else { addToast("No se encontraron datos.", "❌"); setTimeout(()=>window.location.href='index.html', 2000); }
     } catch(err) { addToast("Error leyendo archivo.", "❌"); setTimeout(()=>window.location.href='index.html', 2000); }
 }
@@ -480,6 +482,7 @@ function initNetwork(roomId, mode, customBotCount = 50) {
                 }, 3000);
 
             } else {
+            } else {
                 mqttClient.subscribe(`dgn/${roomId}/out`);
                 const joinPacket = { type: 'JOIN_REQ', payload: { ...STATE.myProfile }, senderId: STATE.myProfile.id };
                 mqttClient.publish(`dgn/${roomId}/in`, JSON.stringify(joinPacket));
@@ -547,6 +550,7 @@ function initNetwork(roomId, mode, customBotCount = 50) {
                     if (window.localAudioStream) call.answer(window.localAudioStream); else call.answer(); 
                     call.on('stream', remoteStream => playAudioStream(remoteStream, call.peer));
                 });
+            } else {
             } else {
                 peer = new Peer(WEBRTC_CONFIG);
                 peer.on('open', (id) => { STATE.myProfile.peerId = id; });
@@ -650,6 +654,7 @@ function startSystemEvents() {
                                 handleTradeHost(tid, true, buyAmt, shadow.id, true);
                                 changed = true;
                             } else {
+                            } else {
                                 vb.state = 'sell'; // No tiene USD, hora de vender los tokens ganados
                             }
                         } else if (vb.state === 'sell') {
@@ -721,6 +726,7 @@ function processMessageAsHost(data) {
             STATE.players[payload.id].name = payload.name;
             STATE.players[payload.id].avatar = payload.avatar;
         } else {
+        } else {
             if (Object.keys(STATE.players).length >= STATE.roomConfig.maxPlayers) {
                 mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify({ type: 'JOIN_REJECT', target: payload.id, reason: 'Sala llena' }));
                 return;
@@ -771,6 +777,7 @@ function processMessageAsHost(data) {
             if(main.solBalance >= payload.amount) { main.solBalance -= payload.amount; sub.solBalance += payload.amount; }
             else { hostEmitAlert(senderId, "Saldo insuficiente en Main Wallet", "❌"); }
         } else {
+        } else {
             if(sub.solBalance >= payload.amount) { sub.solBalance -= payload.amount; main.solBalance += payload.amount; }
             else { hostEmitAlert(senderId, "Saldo insuficiente en Sub-Wallet", "❌"); }
         }
@@ -810,6 +817,7 @@ function processMessageAsHost(data) {
                 p.volBots[tid].active = false;
                 hostEmitAlert(p.id, `Bot detenido. Fondos y ganancias devueltos a tu cuenta principal.`, "🤖");
             } else {
+            } else {
                 // INICIAR
                 const amt = parseFloat(payload.amount);
                 if (amt > 0 && p.solBalance >= amt) {
@@ -823,6 +831,7 @@ function processMessageAsHost(data) {
                     STATE.players[shadowId].solBalance += amt; // Se lo da a la billetera sombra
                     p.volBots[tid] = { active: true, shadowId: shadowId, state: 'buy' };
                     hostEmitAlert(p.id, `Bot iniciado con ${formatUSD(amt)}.`, "🤖");
+                } else {
                 } else {
                     hostEmitAlert(p.id, `Saldo insuficiente para asignar al bot.`, "❌");
                 }
@@ -877,6 +886,7 @@ if (type === 'ACTION_TOGGLE_LIVE') {
                 humans.forEach(h => { h.solBalance += split; });
                 handleChatHost(`🚁 AIRDROP: ${p.name} repartió ${formatUSD(payload.amount)} a ${humans.length} degens!`, senderId, true);
             } else { handleChatHost(`🚁 ${p.name} intentó un Airdrop, pero no hay humanos. Se quemaron.`, senderId, true); }
+            } else { handleChatHost(`🚁 ${p.name} intentó un Airdrop, pero no hay humanos. Se quemaron.`, senderId, true); }
             broadcastState();
         }
     }
@@ -887,6 +897,7 @@ if (type === 'ACTION_TOGGLE_LIVE') {
             if(Math.random() > 0.5) {
                 p.solBalance += (payload.amount * 2);
                 handleChatHost(`🎰 ¡${p.name} ganó ${formatUSD(payload.amount)} en el Casino! x2`, senderId, true);
+            } else { handleChatHost(`🎰 ${p.name} fue liquidado y perdió ${formatUSD(payload.amount)} en el Casino. F`, senderId, true); }
             } else { handleChatHost(`🎰 ${p.name} fue liquidado y perdió ${formatUSD(payload.amount)} en el Casino. F`, senderId, true); }
             broadcastState();
         }
@@ -1013,26 +1024,7 @@ let mqttBroadcastTimer = null;
 
 function broadcastState() {
     if (STATE.roomConfig.isHost) {
-        requestUIRender(); 
-        const syncTime = Date.now();
-        const syncPayload = getCompressedState(); 
-
-        // P2P ULTRA RÁPIDO (0ms Latencia - Sin Throttling)
-        if (window.clientConns) {
-            const msgObjFull = { type: 'STATE_SYNC', time: syncTime, payload: syncPayload };
-            Object.values(window.clientConns).forEach(c => {
-                if(c.open) c.send(msgObjFull);
-            });
-        }
-
-        // MQTT Fallback - Sistema de Cola Garantizada (Soluciona acciones perdidas)
-        if (!STATE.roomConfig.isOffline && mqttClient && mqttClient.connected) {
-            const timeSinceLast = syncTime - lastMqttBroadcast;
-            
-            if (timeSinceLast > 600) { // Reducido a 600ms para mayor fluidez
-                lastMqttBroadcast = syncTime;
-                const msg = { type: 'STATE_SYNC', time: syncTime, payload: syncPayload };
-                mqttClient.publish(`dgn/${STATE.roomConfig.code}/out`, JSON.stringify(msg));
+        processMessageAsHost({ type, payload, senderId: STATE.myProfile.id, time: Date.now() });
             } else {
                 // Si se limitó por velocidad, programa un envío garantizado
                 if (mqttBroadcastTimer) clearTimeout(mqttBroadcastTimer);
@@ -1158,6 +1150,7 @@ if (!currentCandle || Date.now() - currentCandle.time > 1000) {
             });
         }
 
+    } else {
     } else {
         // FOMO: Bloqueo de ventas (Tokens Congelados)
         if (token.isFrozen && !(token.creatorIds || [token.creatorId]).includes(player.id)) {
@@ -1352,6 +1345,7 @@ function handleGiftHost(targetId, asset, amount, senderId) {
         if (sender.solBalance < amount) return;
         sender.solBalance -= amount; target.solBalance += amount;
     } else {
+    } else {
         if (!sender.portfolio[asset] || sender.portfolio[asset] < amount) return;
         sender.portfolio[asset] -= amount; target.portfolio[asset] = (target.portfolio[asset] || 0) + amount;
     }
@@ -1371,6 +1365,7 @@ function handleBuyLuxuryHost(itemId, playerId) {
     player.solBalance -= item.price; 
     if(item.isVerified) {
         player.isVerified = true;
+    } else {
     } else {
         player.luxuries = [...(player.luxuries || []), item.icon];
     }
@@ -1442,6 +1437,7 @@ function handleClaimAllFeesHost(playerId) {
     if(totalClaimedForMe > 0) {
         hostEmitAlert(playerId, `Has reclamado tu parte de ${formatUSD(totalClaimedForMe)} en Fees.`, "💰");
         broadcastState();
+    } else {
     } else {
         hostEmitAlert(playerId, `No tienes fees para reclamar actualmente.`, "❌");
     }
@@ -1798,84 +1794,7 @@ let baseProb = isHighlyTrusted ? 0.2 : 0.01;
 // CLIENT ACTIONS DISPATCHER
 function dispatchAction(type, payload) {
     if (STATE.roomConfig.isHost) {
-        if(type==='ACTION_TRADE') { handleTradeHost(payload.tokenId, payload.isBuy, payload.amount, STATE.myProfile.id); broadcastState(); }
-        if(type==='ACTION_CHAT') { handleChatHost(payload.msg, STATE.myProfile.id, false); }
-        if(type==='ACTION_DEXSCREENER') { handleDexScreenerHost(payload.tokenId, STATE.myProfile.id); }
-        if(type==='ACTION_SET_SLTP') {
-            const p = STATE.players[STATE.myProfile.id];
-            if(p && p.tradesInfo && p.tradesInfo[payload.tokenId]) { p.tradesInfo[payload.tokenId][payload.type] = payload.value ? parseFloat(payload.value) : null; broadcastState(); }
-        }
-        if(type==='ACTION_TOGGLE_VOLBOT') {
-            // Enviar directamente al procesador del Host para que cree la "Billetera Sombra" correctamente
-            processMessageAsHost({ type: 'ACTION_TOGGLE_VOLBOT', payload: payload, senderId: STATE.myProfile.id });
-        }
-if(type==='ACTION_TOGGLE_LIVE') {
-            if(STATE.tokens[payload.tokenId]) {
-                STATE.tokens[payload.tokenId].isLive = !STATE.tokens[payload.tokenId].isLive;
-                if(STATE.tokens[payload.tokenId].isLive) {
-                    handleChatHost(`🔴 ¡El Dev de $${STATE.tokens[payload.tokenId].ticker} acaba de encender DIRECTO! ¡Hay hype masivo en la sala! 🎥`, STATE.myProfile.id, true);
-                }
-                broadcastState();
-            }
-        }
-        if(type==='ACTION_LAUNCH') handleLaunchHost(payload.name, payload.ticker, payload.image, payload.devBuy, STATE.myProfile.id, payload.coFounders);
-        if(type==='ACTION_BURN') handleBurnHost(payload.tokenId, payload.amount, STATE.myProfile.id);
-        if(type==='ACTION_CHAT') handleChatHost(payload.msg, STATE.myProfile.id, false);
-        if(type==='ACTION_POST') handlePostHost(payload.text, STATE.myProfile.id);
-        if(type==='ACTION_GIFT') handleGiftHost(payload.to, payload.asset, payload.amount, STATE.myProfile.id);
-        if(type==='ACTION_BUY_LUXURY') handleBuyLuxuryHost(payload.itemId, STATE.myProfile.id);
-        if(type==='ACTION_ADD_BOT') { window.adjustBots(Object.keys(STATE.players).filter(k=>STATE.players[k].isBot && !k.startsWith('SYSTEM_')).length + (payload.amount || 1)); }
-        if(type==='ACTION_CLAIM_FEES') handleClaimFeesHost(payload.tokenId, STATE.myProfile.id);
-        if(type==='ACTION_CLAIM_ALL_FEES') handleClaimAllFeesHost(STATE.myProfile.id);
-        if(type==='ACTION_UPGRADE_EXCHANGE') handleUpgradeExchangeHost(payload.tokenId, payload.exchange, STATE.myProfile.id);
-        
-        if(type==='ACTION_CREATE_RACE') handleCreateRaceHost(payload.bet, STATE.myProfile.id);
-        if(type==='ACTION_JOIN_RACE') handleJoinRaceHost(payload.raceId, STATE.myProfile.id);
-        if(type==='ACTION_START_RACE') handleStartRaceHost(payload.raceId, STATE.myProfile.id);
-        if(type==='ACTION_TUNE_CAR') { handleTuneCarHost(payload.type, STATE.myProfile.id); }
-
-        if(type==='ACTION_CHARITY') {
-            const p = STATE.players[STATE.myProfile.id];
-            if(p && p.solBalance >= payload.amount && payload.amount > 0) {
-                p.solBalance -= payload.amount; p.reputation = Math.min(100, (p.reputation || 1) + payload.amount * 5);
-                p.followers += Math.floor(payload.amount * 10);
-                handleChatHost(`💖 ${p.name} quemó ${formatUSD(payload.amount)} por beneficencia!`, STATE.myProfile.id, true); broadcastState();
-            }
-        }
-        if(type==='ACTION_AIRDROP') {
-            const p = STATE.players[STATE.myProfile.id];
-            if(p && p.solBalance >= payload.amount && payload.amount > 0) {
-                p.solBalance -= payload.amount; p.reputation = Math.min(100, (p.reputation || 1) + payload.amount * 8);
-                p.followers += Math.floor(payload.amount * 20);
-                const humans = Object.values(STATE.players).filter(pl => !pl.isBot && pl.id !== STATE.myProfile.id);
-                if (humans.length > 0) {
-                    const split = payload.amount / humans.length; humans.forEach(h => { h.solBalance += split; });
-                    handleChatHost(`🚁 AIRDROP MASIVO: ${p.name} repartió ${formatUSD(payload.amount)} a ${humans.length} degens!`, STATE.myProfile.id, true);
-                } else { handleChatHost(`🚁 ${p.name} intentó un Airdrop, pero no hay humanos. Se quemaron.`, STATE.myProfile.id, true); }
-                broadcastState();
-            }
-        }
-        if(type==='ACTION_CASINO') {
-            const p = STATE.players[STATE.myProfile.id];
-            if(p && p.solBalance >= payload.amount && payload.amount > 0) {
-                p.solBalance -= payload.amount;
-                if(Math.random() > 0.5) { p.solBalance += (payload.amount * 2); handleChatHost(`🎰 ¡${p.name} ganó ${formatUSD(payload.amount)} en el Casino! x2`, STATE.myProfile.id, true); } 
-                else { handleChatHost(`🎰 ${p.name} fue liquidado y perdió ${formatUSD(payload.amount)} en el Casino. F`, STATE.myProfile.id, true); }
-                broadcastState();
-            }
-        }
-        if(type==='ACTION_STAKE') {
-            const p = STATE.players[STATE.myProfile.id];
-            if(p && p.solBalance >= payload.amount && payload.amount > 0) { p.solBalance -= payload.amount; p.solStaked = (p.solStaked || 0) + payload.amount; broadcastState(); }
-        }
-        if(type==='ACTION_UNSTAKE') {
-            const p = STATE.players[STATE.myProfile.id];
-            if(p && p.solStaked >= payload.amount && payload.amount > 0) { p.solStaked -= payload.amount; p.solBalance += payload.amount; broadcastState(); }
-        }
-        if(type==='ACTION_VOICE') {
-            if(STATE.players[STATE.myProfile.id]) STATE.players[STATE.myProfile.id].isSpeaking = payload.isSpeaking;
-            broadcastState();
-        }
+        processMessageAsHost({ type, payload, senderId: STATE.myProfile.id, time: Date.now() });
     } else {
         const packet = { type, payload, senderId: STATE.myProfile.id };
         if (window.dataConn && window.dataConn.open) {
@@ -2364,8 +2283,9 @@ function UpdateMarketDynamic() {
         .sort((a,b) => b.solPool - a.solPool)
         .filter(t => t.name.toLowerCase().includes(STATE.searchQuery.toLowerCase()) || t.ticker.toLowerCase().includes(STATE.searchQuery.toLowerCase()))
         .filter(t => {
-            if(STATE.marketFilter === 'human') return !STATE.players[t.creatorId]?.isBot;
-            if(STATE.marketFilter === 'bot') return STATE.players[t.creatorId]?.isBot;
+            const creator = STATE.players[t.creatorId];
+            if(STATE.marketFilter === 'human') return creator && !creator.isBot;
+            if(STATE.marketFilter === 'bot') return !creator || creator.isBot;
             return true;
         });
 
@@ -2603,6 +2523,7 @@ function UpdateRacingDynamic() {
         } else if (r.state === 'racing') {
             statusHtml = `<span class="text-red-500 font-black uppercase tracking-widest animate-pulse flex items-center gap-2">🚗💨 Corriendo...</span>`;
         } else {
+        } else {
             const winner = STATE.players[r.winner];
             statusHtml = `<span class="text-emerald-400 font-black text-sm border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 rounded-lg">🏆 Ganó ${winner?.name || 'Alguien'}</span>`;
         }
@@ -2623,6 +2544,7 @@ function UpdateRacingDynamic() {
                 `).join('')}
             </div>
             `;
+        } else {
         } else {
             visualTrackHtml = `
             <div class="flex items-center gap-2 overflow-x-auto hide-scrollbar pt-2 mt-2 border-t border-slate-800/50">
@@ -2888,6 +2810,7 @@ function UpdateTokenDetailDynamic() {
                                 </span>`;
             pnlDiv.classList.remove('hidden');
         } else {
+        } else {
             pnlDiv.classList.add('hidden');
         }
     }
@@ -3001,6 +2924,7 @@ function UpdateTokenDetailDynamic() {
             walletsHTML += `</div><button onclick="dispatchAction('ACTION_CREATE_WALLET', {}); window.lastWalletCount = 0;" class="w-full bg-slate-800 hover:bg-slate-700 text-[9px] font-bold py-1.5 rounded-b-lg text-slate-300 border border-t-0 border-slate-700 transition-colors">+ Nueva Sub-Wallet</button>`;
             multiWalletUI.innerHTML = walletsHTML;
         } else {
+        } else {
             myWallets.forEach((w) => {
                 const solSpan = document.getElementById('w-sol-' + w.id);
                 const tokSpan = document.getElementById('w-tok-' + w.id);
@@ -3032,6 +2956,7 @@ function UpdateTokenDetailDynamic() {
                             <button onclick="const a=parseFloat(document.getElementById('freeze-amt-${token.id}').value); const t=parseFloat(document.getElementById('freeze-time-${token.id}').value); if(a>0 && t>0) { dispatchAction('ACTION_FREEZE_TOKENS', { tokenId: '${token.id}', amount: a, minutes: t }); document.getElementById('freeze-amt-${token.id}').value=''; document.getElementById('freeze-time-${token.id}').value=''; }" class="w-full bg-cyan-900/40 text-cyan-400 hover:bg-cyan-800/60 border border-cyan-700/50 rounded py-2 text-[9px] font-bold transition-colors uppercase tracking-widest">Bloquear Tokens</button>
                         </div>
                     `;
+                } else {
                 } else {
                     const txt = document.getElementById(`frozen-amt-text-${token.id}`);
                     if (txt) txt.innerText = frozenAmt > 0 ? formatToken(frozenAmt) + ' bloq.' : '';
@@ -3077,6 +3002,7 @@ function UpdateTokenDetailDynamic() {
                 if (volBot && volBot.active) amtInput.classList.add('hidden'); // Oculta el input si está trabajando
                 else amtInput.classList.remove('hidden');
             }
+        } else {
         } else {
             fixedCreatorTools.classList.add('hidden');
         }
@@ -3492,6 +3418,7 @@ function generateChartSVG(token, w, h, simplified) {
                 if (currentAgg) data.push(currentAgg);
                 currentAgg = { ...candle, time: aggTime };
             } else {
+            } else {
                 currentAgg.high = Math.max(currentAgg.high, candle.high);
                 currentAgg.low = Math.min(currentAgg.low, candle.low);
                 currentAgg.close = candle.close;
@@ -3500,12 +3427,14 @@ function generateChartSVG(token, w, h, simplified) {
         });
         if (currentAgg) data.push(currentAgg);
     } else {
+    } else {
         data = baseData;
     }
 
     let viewData = [];
     if (simplified) {
         viewData = data.slice(-100); 
+    } else {
     } else {
         let zoom = STATE.chartConfig?.zoom || 100;
         let offset = STATE.chartConfig?.offset || 0;
@@ -3615,6 +3544,7 @@ window.onload = () => {
     } else if(isHost) {
         STATE.roomConfig = {...STATE.roomConfig, code: code, isHost: true, isOffline: false };
         initNetwork(code, 'host', STATE.roomConfig.botCount);
+    } else {
     } else {
         STATE.roomConfig = {...STATE.roomConfig, code: code, isHost: false, isOffline: false};
         initNetwork(code, 'client');
@@ -3749,6 +3679,7 @@ function setupResizableSplitter() {
         let clientX;
         if (e.type === 'touchmove') {
             clientX = e.touches[0].clientX;
+        } else {
         } else {
             clientX = e.clientX;
         }
